@@ -193,7 +193,12 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
         <div class="field"><label>Nyquist Factor</label><input id="in_nyq" type="number" step="0.1" oninput="recalc()"><span class="unit">px</span></div>
       </div>
       <div class="group">
-        <h3>목표 사양 (FOV · WD 역산)</h3>
+        <h3>목표 사양 (역산)</h3>
+        <div class="field"><label>역산 기준</label>
+          <select id="in_mode" onchange="fromTarget()">
+            <option value="fov">목표 FOV → 배율 (WD→초점거리)</option>
+            <option value="focal">초점거리 고정 → WD로 배율 산출</option>
+          </select><span class="unit"></span></div>
         <div class="field"><label>목표 FOV Width</label><input id="in_fovW" type="number" step="0.1" oninput="fromTarget()"><span class="unit">mm</span></div>
         <div class="field"><label>목표 FOV Height</label><input id="in_fovH" type="number" step="0.1" oninput="fromTarget()"><span class="unit">mm</span></div>
         <div class="field"><label>목표 WD</label><input id="in_wd" type="number" step="1" oninput="fromTarget()"><span class="unit">mm</span></div>
@@ -351,27 +356,44 @@ function compute(){
   if(f>0){ angH=2*Math.atan(sensorW/(2*f))*180/Math.PI; angV=2*Math.atan(sensorH/(2*f))*180/Math.PI; }
   return {w,h,px,mag,f,nyq,sensorW,sensorH,sensorD,fovW,fovH,pixRes,acc,wd,angH,angV,errs};
 }
-/* reverse: user enters desired FOV / WD -> derive Magnification & Focal Length */
+/* reverse: 목표값으로 배율/초점거리 역산 (모드별) */
 function fromTarget(){
   const w=+v('in_w'), px=+v('in_px');
-  const fovW=+v('in_fovW'), fovH=+v('in_fovH'), wd=+v('in_wd');
+  const fovW=+v('in_fovW'), wd=+v('in_wd'), f=+v('in_f');
   const sensorW=(w*px)/1000;
+  const mode=document.getElementById('in_mode').value;
   const msg=document.getElementById('targetmsg');
   toggleErr('in_fovW', v('in_fovW')!=='' && fovW<=0);
   toggleErr('in_wd', v('in_wd')!=='' && wd<=0);
   if(!sensorW){ msg.textContent='카메라 Width/Pixel Size를 먼저 입력하세요'; return; }
-  if(fovW>0){
-    const mag = sensorW/fovW;          // CALC-01
-    setVal('in_mag', round(mag,4));
+
+  if(mode==='focal'){
+    // 초점거리 고정 → 목표 WD 로 배율 산출:  Mag = f / (WD - f)
+    toggleErr('in_f', v('in_f')!=='' && f<=0);
+    if(f<=0){ msg.textContent='초점거리(Focal Length)를 먼저 입력하세요'; recalc(); return; }
     if(wd>0){
-      const f = wd/(1+1/mag);          // CALC-02
-      setVal('in_f', round(f,2));
-      msg.textContent = `→ 배율 ${round(mag,4)}× · 초점거리 ${round(f,2)}mm 로 역산됨`;
+      if(wd<=f){ msg.textContent='WD는 초점거리보다 커야 합니다 (WD > f)'; recalc(); return; }
+      const mag = f/(wd-f);            // CALC-02 역산
+      setVal('in_mag', round(mag,4));
+      msg.textContent = `→ 초점거리 ${round(f,2)}mm 고정 · WD ${round(wd,1)}mm → 배율 ${round(mag,4)}× 산출`;
     } else {
-      msg.textContent = `→ 배율 ${round(mag,4)}× 로 역산됨 (WD 입력 시 초점거리도 계산)`;
+      msg.textContent = '목표 WD 를 입력하면 배율이 산출됩니다';
     }
   } else {
-    msg.textContent = '';
+    // 기존: 목표 FOV → 배율, WD → 초점거리
+    if(fovW>0){
+      const mag = sensorW/fovW;        // CALC-01
+      setVal('in_mag', round(mag,4));
+      if(wd>0){
+        const f2 = wd/(1+1/mag);       // CALC-02
+        setVal('in_f', round(f2,2));
+        msg.textContent = `→ 배율 ${round(mag,4)}× · 초점거리 ${round(f2,2)}mm 로 역산됨`;
+      } else {
+        msg.textContent = `→ 배율 ${round(mag,4)}× 로 역산됨 (WD 입력 시 초점거리도 계산)`;
+      }
+    } else {
+      msg.textContent = '';
+    }
   }
   recalc();
 }
