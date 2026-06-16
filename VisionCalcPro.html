@@ -95,6 +95,9 @@
   .compat-box.warn{background:#fff7e6;border:1px solid #f3d59a;color:#92600a}
   .compat-box .ttl{font-weight:700;display:block;margin-bottom:3px}
   .compat-box ul{margin:4px 0 0;padding-left:18px}
+  .modeltag{font-size:12px;margin:-4px 0 10px;padding:4px 9px;border-radius:6px;display:inline-block}
+  .modeltag.db{background:#e8f1ff;border:1px solid #b9d4ff;color:#1d4ed8}
+  .modeltag.custom{background:#fff4e5;border:1px solid #f3d09a;color:#9a5b08}
   /* login gate */
   #gate{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;align-items:center;justify-content:center}
   #gate .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:34px 30px;width:340px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.08)}
@@ -182,12 +185,14 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
     <div class="sidepanel">
       <div class="group">
         <h3>카메라 <button class="mini pick" onclick="openPicker('camera')">DB에서 선택</button></h3>
+        <div class="modeltag" id="camModel"></div>
         <div class="field"><label>Width 해상도</label><input id="in_w" type="number" oninput="recalc()"><span class="unit">px</span></div>
         <div class="field"><label>Height 해상도</label><input id="in_h" type="number" oninput="recalc()"><span class="unit">px</span></div>
         <div class="field"><label>Pixel Size</label><input id="in_px" type="number" step="0.01" oninput="recalc()"><span class="unit">μm</span></div>
       </div>
       <div class="group">
         <h3>렌즈 <button class="mini pick" onclick="openPicker('lens')">DB에서 선택</button></h3>
+        <div class="modeltag" id="lensModel"></div>
         <div class="field"><label>Magnification</label><input id="in_mag" type="number" step="0.001" oninput="recalc()"><span class="unit">×</span></div>
         <div class="field"><label>Focal Length</label><input id="in_f" type="number" step="0.1" oninput="recalc()"><span class="unit">mm</span></div>
         <div class="field"><label>Nyquist Factor</label><input id="in_nyq" type="number" step="0.1" oninput="recalc()"><span class="unit">px</span></div>
@@ -422,11 +427,29 @@ function recalc(){
   syncTarget('in_fovH', r.fovH);
   syncTarget('in_wd',   r.wd);
   checkCompat(r);
+  updateModelLabels(r);
   update3D(r);
 }
 
-/* ===== F-04-04 camera-lens compatibility check ===== */
+/* ===== 모델명 / 커스텀 표시 ===== */
 let selectedCamera=null, selectedLens=null;
+const approx=(a,b)=> a!=null && b!=null && Math.abs(+a-+b) < 1e-4;
+function updateModelLabels(r){
+  // 카메라: 선택 모델의 해상도·픽셀이 입력값과 일치하면 모델명, 아니면 커스텀
+  const cam=document.getElementById('camModel');
+  const camMatch = selectedCamera && approx(r.w,selectedCamera.width_px) &&
+                   approx(r.h,selectedCamera.height_px) && approx(r.px,selectedCamera.pixel_size_um);
+  if(camMatch){ cam.className='modeltag db'; cam.textContent='📷 '+(selectedCamera.manufacturer?selectedCamera.manufacturer+' ':'')+selectedCamera.model_name; }
+  else { cam.className='modeltag custom'; cam.textContent='✎ 커스텀 모델 (직접 입력)'; }
+  // 렌즈: 선택 모델의 배율(및 초점거리)이 일치하면 모델명, 아니면 커스텀
+  const lens=document.getElementById('lensModel');
+  const lensMatch = selectedLens && approx(r.mag,selectedLens.magnification) &&
+                    (!selectedLens.focal_length_mm || approx(r.f,selectedLens.focal_length_mm));
+  if(lensMatch){ lens.className='modeltag db'; lens.textContent='🔍 '+(selectedLens.manufacturer?selectedLens.manufacturer+' ':'')+selectedLens.model_name; }
+  else { lens.className='modeltag custom'; lens.textContent='✎ 커스텀 모델 (직접 입력)'; }
+}
+
+/* ===== F-04-04 camera-lens compatibility check ===== */
 // sensor format ordering (image circle size) for coverage comparison
 const FORMATS=['1/4"','1/3"','1/2.5"','1/2.3"','1/2"','1/1.8"','2/3"','1"','1.1"','4/3"','APS-C','Full Frame'];
 const fmtRank=s=>{const i=FORMATS.indexOf((s||'').trim());return i<0?null:i;};
