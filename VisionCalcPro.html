@@ -203,7 +203,7 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
         <div class="field"><label>Pixel Size</label><input id="in_px" type="number" step="0.01" oninput="recalc()"><span class="unit">μm</span></div>
       </div>
       <div class="group">
-        <h3>렌즈 <button class="mini pick normal-only" onclick="openPicker('lens')">DB에서 선택</button></h3>
+        <h3>렌즈 <button class="mini pick" onclick="openPicker('lens')">DB에서 선택</button></h3>
         <div class="modeltag" id="lensModel"></div>
         <div class="field"><label>Magnification</label><input id="in_mag" type="number" step="0.001" oninput="recalc()"><span class="unit">×</span></div>
         <div class="field normal-only"><label>Focal Length</label><input id="in_f" type="number" step="0.1" oninput="recalc()"><span class="unit">mm</span></div>
@@ -474,10 +474,14 @@ function recalc(){
     checkCompat(r);
     updateModelLabels(r);
   } else {
-    // TC 모드: 카메라 모델 태그만 갱신
+    // TC 모드: 카메라 모델 태그 갱신
     const cam=document.getElementById('camModel');
     const camMatch=selectedCamera&&approx(r.w,selectedCamera.width_px)&&approx(r.h,selectedCamera.height_px)&&approx(r.px,selectedCamera.pixel_size_um);
     if(cam){ cam.className=camMatch?'modeltag db':'modeltag custom'; cam.textContent=camMatch?'📷 '+(selectedCamera.manufacturer?selectedCamera.manufacturer+' ':'')+selectedCamera.model_name:'✎ 커스텀 모델 (직접 입력)'; }
+    // TC 모드: 선택된 텔레센트릭 렌즈명 갱신 (배율·NA 일치 시 모델명, 아니면 일반 라벨)
+    const lens=document.getElementById('lensModel');
+    const lensMatch=selectedLens&&selectedLens.lens_type&&approx(r.mag,selectedLens.magnification)&&approx(+v('in_na'),selectedLens.na);
+    if(lens){ lens.className='modeltag db'; lens.textContent=lensMatch?'🔭 '+(selectedLens.manufacturer?selectedLens.manufacturer+' ':'')+selectedLens.model_name:'🔭 텔레센트릭 렌즈'; }
   }
   update3D(isTc?{...r,wd:isNaN(tcWd)?r.wd:tcWd}:r);
 }
@@ -820,18 +824,44 @@ window.saveLens=(id)=>{
 };
 window.delLens=(id)=>{ if(confirm('이 렌즈를 삭제할까요?')){lenses=lenses.filter(x=>x.id!==id);persistLenses();renderLenses();} };
 window.useLens=(id)=>{ applyLens(lenses.find(x=>x.id===id)); showView('calc'); toast('렌즈 적용됨'); };
-function applyLens(l){ if(!l)return; selectedLens=l; if(l.magnification)setVal('in_mag',l.magnification); if(l.focal_length_mm)setVal('in_f',l.focal_length_mm); recalc(); }
+function applyLens(l){
+  if(!l)return; selectedLens=l;
+  const isTc = !!(l.lens_type || l.na!=null);
+  if(isTc){
+    if(calcMode!=='tc') setCalcMode('tc');
+    if(l.magnification) setVal('in_mag', l.magnification);
+    if(l.min_wd_mm) setVal('in_tcwd', l.min_wd_mm);
+    if(l.na!=null) setVal('in_na', l.na);
+  } else {
+    if(calcMode!=='normal') setCalcMode('normal');
+    if(l.magnification) setVal('in_mag', l.magnification);
+    if(l.focal_length_mm) setVal('in_f', l.focal_length_mm);
+  }
+  recalc();
+}
 
 /* ============ picker modal ============ */
 window.openPicker=(type)=>{
-  const list=type==='camera'?cameras:lenses;
-  const rows=list.map(o=>type==='camera'
-    ? `<tr><td>${esc(o.manufacturer)}</td><td>${esc(o.model_name)}</td><td>${o.width_px}×${o.height_px}</td><td>${o.pixel_size_um}μm</td>
-        <td><button class="mini" onclick="pickItem('camera','${o.id}')">선택</button></td></tr>`
+  if(type==='camera'){
+    const rows=cameras.filter(o=>o.id).map(o=>
+      `<tr><td>${esc(o.manufacturer)}</td><td>${esc(o.model_name)}</td><td>${o.width_px}×${o.height_px}</td><td>${o.pixel_size_um}μm</td>
+        <td><button class="mini" onclick="pickItem('camera','${o.id}')">선택</button></td></tr>`).join('');
+    openModal('카메라 선택', `<table><tbody>${rows}</tbody></table>`);
+    return;
+  }
+  // 렌즈: 텔레센트릭 모드에서는 텔레센트릭 렌즈만, 일반 모드에서는 일반(비텔레센트릭) 렌즈만 표시
+  const tc = calcMode==='tc';
+  const list = lenses.filter(o=> o.id && (tc ? !!o.lens_type : !o.lens_type));
+  const rows = list.map(o=> tc
+    ? `<tr><td>${esc(o.manufacturer)}</td><td>${esc(o.model_name)}</td><td>×${o.magnification||'—'}</td><td>${o.min_wd_mm||'?'}mm</td><td>${o.na!=null?o.na:'—'}</td>
+        <td><button class="mini" onclick="pickItem('lens','${o.id}')">선택</button></td></tr>`
     : `<tr><td>${esc(o.manufacturer)}</td><td>${esc(o.model_name)}</td><td>f${o.focal_length_mm||'—'}</td><td>×${o.magnification||'—'}</td>
         <td><button class="mini" onclick="pickItem('lens','${o.id}')">선택</button></td></tr>`).join('');
-  openModal(type==='camera'?'카메라 선택':'렌즈 선택',
-    `<table><tbody>${rows}</tbody></table>`);
+  const head = tc
+    ? `<thead><tr><th>제조사</th><th>모델명</th><th>배율</th><th>WD</th><th>NA</th><th></th></tr></thead>`
+    : '';
+  openModal(tc?'텔레센트릭 렌즈 선택':'렌즈 선택',
+    `<table>${head}<tbody>${rows}</tbody></table>`);
 };
 window.pickItem=(type,id)=>{
   if(type==='camera') applyCamera(cameras.find(x=>x.id===id));
