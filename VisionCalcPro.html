@@ -168,6 +168,8 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
   <button data-view="cameras" onclick="showView('cameras')">카메라 DB</button>
   <button data-view="lenses" onclick="showView('lenses')">렌즈 DB</button>
   <button data-view="projects" onclick="showView('projects')">프로젝트</button>
+  <span style="flex:1"></span>
+  <button id="btnAdminLogin" class="btn" onclick="toggleAdminLogin()" style="font-size:13px">🔒 관리자 로그인</button>
 </nav>
 
 <main>
@@ -229,8 +231,8 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
         <input class="search" id="camSearch" placeholder="제조사 / 모델명 / 인터페이스 검색" oninput="renderCameras()">
         <span id="dbSource" style="color:var(--muted);font-size:12px">DB: 로딩중…</span>
         <div class="spacer" style="flex:1"></div>
-        <button class="btn" onclick="exportTeamDB()" title="현재 DB를 db.json으로 받아 공유 폴더에 덮어쓰면 전체에 반영됩니다">팀 DB 내보내기</button>
-        <button class="btn primary" onclick="openCamEdit()">+ 카메라 등록</button>
+        <button class="btn" id="btnExportTeamDB" onclick="exportTeamDB()" title="현재 DB를 db.json으로 받아 공유 폴더에 덮어쓰면 전체에 반영됩니다" style="display:none">팀 DB 내보내기</button>
+        <button class="btn primary" id="btnAddCam" onclick="openCamEdit()" style="display:none">+ 카메라 등록</button>
       </div>
       <table><thead><tr>
         <th>제조사</th><th>모델명</th><th>해상도</th><th>Pixel(μm)</th><th>센서</th><th>인터페이스</th><th>FPS</th><th></th>
@@ -244,7 +246,7 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
       <div class="toolbar">
         <input class="search" id="lensSearch" placeholder="제조사 / 모델명 / 마운트 검색" oninput="renderLenses()">
         <div class="spacer" style="flex:1"></div>
-        <button class="btn primary" onclick="openLensEdit()">+ 렌즈 등록</button>
+        <button class="btn primary" id="btnAddLens" onclick="openLensEdit()" style="display:none">+ 렌즈 등록</button>
       </div>
       <table><thead><tr>
         <th>제조사</th><th>모델명</th><th>f(mm)</th><th>배율</th><th>마운트</th><th>WD(mm)</th><th>센서포맷</th><th></th>
@@ -457,6 +459,10 @@ function checkCompat(r){
   const box=document.getElementById('compat');
   const c=selectedCamera, l=selectedLens;
   if(!c||!l){ box.innerHTML=''; return; }   // only when both chosen from DB
+  // If user has manually edited values away from the selected DB models, treat as custom → no compat
+  const camStillMatches = approx(r.w,c.width_px) && approx(r.h,c.height_px) && approx(r.px,c.pixel_size_um);
+  const lensStillMatches = approx(r.mag,l.magnification) && (!l.focal_length_mm || approx(r.f,l.focal_length_mm));
+  if(!camStillMatches || !lensStillMatches){ box.innerHTML=''; return; }
   const warns=[];
   // 1) mount type
   if(c.mount && l.mount_type && c.mount.trim()!==l.mount_type.trim())
@@ -486,6 +492,70 @@ function syncTarget(id,val){
   el.value = (val==null||isNaN(val))? '' : round(val, dp());
 }
 window.recalc=recalc;
+
+/* ===== 관리자 인증 =====
+   기본 관리자 비밀번호: admin  (배포 전 반드시 변경 — README_deploy.txt 참고)
+   변경법: 브라우저 콘솔에서
+     crypto.subtle.digest('SHA-256',new TextEncoder().encode('새비밀번호'))
+       .then(b=>console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
+   출력된 해시를 __ADMIN_HASH 에 붙여 넣으세요.
+   ===================================================================== */
+window.__ADMIN_HASH='1882ae1f1f7808800f0328dbbae856d7c710a50517e45e2a8da6c3c047271a60';
+const ADMIN_KEY='vcp_admin_ok';
+const isAdmin=()=>sessionStorage.getItem(ADMIN_KEY)==='1';
+let pendingAdminFn=null;
+
+function updateAdminUI(){
+  const admin=isAdmin();
+  const btn=document.getElementById('btnAdminLogin');
+  if(btn){ btn.textContent=admin?'🔑 관리자 로그아웃':'🔒 관리자 로그인'; btn.style.color=admin?'var(--good)':''; }
+  ['btnExportTeamDB','btnAddCam','btnAddLens'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display=admin?'':'none';
+  });
+}
+
+window.toggleAdminLogin=function(){
+  if(isAdmin()){
+    sessionStorage.removeItem(ADMIN_KEY); updateAdminUI();
+    const a=document.querySelector('.view.active');
+    if(a?.id==='cameras') renderCameras();
+    if(a?.id==='lenses') renderLenses();
+    toast('관리자 로그아웃');
+  } else { openAdminLoginModal(null); }
+};
+
+function openAdminLoginModal(fn){
+  pendingAdminFn=fn;
+  openModal('관리자 로그인',`
+    <p style="color:var(--muted);font-size:13px;margin:0 0 14px">관리자 비밀번호를 입력하세요.</p>
+    <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">비밀번호</label>
+    <input id="adminPwInput" type="password" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:7px">
+    <div id="adminPwErr" style="color:var(--bad);font-size:12px;min-height:16px;margin-top:8px"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">취소</button>
+      <button class="btn primary" onclick="tryAdminLogin()">로그인</button>
+    </div>`);
+  setTimeout(()=>{
+    const el=document.getElementById('adminPwInput');
+    if(el){ el.focus(); el.addEventListener('keydown',e=>{ if(e.key==='Enter') tryAdminLogin(); }); }
+  },50);
+}
+
+window.tryAdminLogin=async function(){
+  const pw=document.getElementById('adminPwInput').value;
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pw));
+  const h=[...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  if(h===window.__ADMIN_HASH){
+    sessionStorage.setItem(ADMIN_KEY,'1'); updateAdminUI(); closeModal();
+    const fn=pendingAdminFn; pendingAdminFn=null;
+    if(fn){ fn(); }
+    else{ const a=document.querySelector('.view.active'); if(a?.id==='cameras') renderCameras(); if(a?.id==='lenses') renderLenses(); }
+    toast('관리자 로그인 성공');
+  } else {
+    document.getElementById('adminPwErr').textContent='비밀번호가 올바르지 않습니다.';
+    document.getElementById('adminPwInput').select();
+  }
+};
 
 /* ============ THREE.js viewer ============ */
 let renderer,scene,camera3,controls,group,labelLayer;
@@ -607,8 +677,8 @@ window.showView=(name)=>{
   document.querySelectorAll('.view').forEach(s=>s.classList.toggle('active',s.id===name));
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===name));
   if(name==='calc') setTimeout(onResize,30);
-  if(name==='cameras') renderCameras();
-  if(name==='lenses') renderLenses();
+  if(name==='cameras'){ renderCameras(); updateAdminUI(); }
+  if(name==='lenses'){ renderLenses(); updateAdminUI(); }
   if(name==='projects') renderProjects();
 };
 
@@ -624,8 +694,8 @@ function renderCameras(){
     <td>${esc(c.interface||'')}</td><td>${c.frame_rate_fps||''}</td>
     <td class="rowbtns">
       <button class="mini" onclick="useCamera('${c.id}')">사용</button>
-      <button class="mini" onclick="openCamEdit('${c.id}')">수정</button>
-      <button class="mini del" onclick="delCamera('${c.id}')">삭제</button>
+      ${isAdmin()?`<button class="mini" onclick="openCamEdit('${c.id}')">수정</button>
+      <button class="mini del" onclick="delCamera('${c.id}')">삭제</button>`:''}
     </td></tr>`).join('') : `<tr><td colspan="8" class="empty">결과 없음</td></tr>`;
 }
 window.renderCameras=renderCameras;
@@ -671,8 +741,8 @@ function renderLenses(){
     <td>${esc(l.sensor_format||'')}</td>
     <td class="rowbtns">
       <button class="mini" onclick="useLens('${l.id}')">사용</button>
-      <button class="mini" onclick="openLensEdit('${l.id}')">수정</button>
-      <button class="mini del" onclick="delLens('${l.id}')">삭제</button>
+      ${isAdmin()?`<button class="mini" onclick="openLensEdit('${l.id}')">수정</button>
+      <button class="mini del" onclick="delLens('${l.id}')">삭제</button>`:''}
     </td></tr>`).join('') : `<tr><td colspan="8" class="empty">결과 없음</td></tr>`;
 }
 window.renderLenses=renderLenses;
@@ -799,7 +869,7 @@ window.toast=toast;
 /* ============ boot ============ */
 setVal('in_w',2448);setVal('in_h',2048);setVal('in_px',3.45);
 setVal('in_mag',0.1);setVal('in_f',16);setVal('in_nyq',2);setVal('in_dp',2);
-init3D(); recalc();
+init3D(); recalc(); updateAdminUI();
 loadTeamDB().then(()=>{
   const el=document.getElementById('dbSource'); if(el) el.textContent='DB: '+dbSource;
 });
