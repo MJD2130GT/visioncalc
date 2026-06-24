@@ -331,7 +331,9 @@ async function loadTeamDB(){
 }
 function mergeOverlay(base, overlayKey, delKey){
   // db.json 의 "_section" 구분자 등 데이터가 아닌 항목 제거 (id + model_name 필수)
-  base = base.filter(o=>o && o.id && o.model_name);
+  // ★ 기준선 객체를 복제해서 사용 — 화면 편집(Object.assign)이 teamDB 원본을 변형시켜
+  //    persistOverlay 의 변경 감지가 무력화되던 버그 방지
+  base = base.filter(o=>o && o.id && o.model_name).map(o=>({...o}));
   const del = new Set(DB.load(delKey,[]));
   const adds = DB.load(overlayKey,[]);
   const addMap = Object.fromEntries(adds.map(o=>[o.id,o]));
