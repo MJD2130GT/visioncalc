@@ -471,10 +471,11 @@ function checkCompat(r){
   const rc=fmtRank(c.sensor_format), rl=fmtRank(l.sensor_format);
   if(rc!=null && rl!=null && rl<rc)
     warns.push(`센서 포맷 미달: 렌즈 <b>${esc(l.sensor_format)}</b> < 카메라 <b>${esc(c.sensor_format)}</b> → 비네팅 우려`);
-  // 3) WD within lens range
+  // 3) WD within lens range (±0.5 mm tolerance to avoid false warnings from rounding)
+  const WD_TOL=0.5;
   if(!isNaN(r.wd)){
-    if(l.min_wd_mm && r.wd<l.min_wd_mm) warns.push(`WD ${fmt(r.wd)}mm < 렌즈 최소 WD <b>${l.min_wd_mm}mm</b>`);
-    if(l.max_wd_mm && r.wd>l.max_wd_mm) warns.push(`WD ${fmt(r.wd)}mm > 렌즈 최대 WD <b>${l.max_wd_mm}mm</b>`);
+    if(l.min_wd_mm && r.wd<l.min_wd_mm-WD_TOL) warns.push(`WD ${fmt(r.wd)}mm < 렌즈 최소 WD <b>${l.min_wd_mm}mm</b>`);
+    if(l.max_wd_mm && r.wd>l.max_wd_mm+WD_TOL) warns.push(`WD ${fmt(r.wd)}mm > 렌즈 최대 WD <b>${l.max_wd_mm}mm</b>`);
   }
   if(warns.length){
     box.className=''; box.innerHTML=`<div class="compat-box warn">
