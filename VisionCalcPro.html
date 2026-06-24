@@ -98,6 +98,15 @@
   .modeltag{font-size:12px;margin:-4px 0 10px;padding:4px 9px;border-radius:6px;display:inline-block}
   .modeltag.db{background:#e8f1ff;border:1px solid #b9d4ff;color:#1d4ed8}
   .modeltag.custom{background:#fff4e5;border:1px solid #f3d09a;color:#9a5b08}
+  /* telecentric view */
+  #telecentric.active{display:grid;grid-template-columns:1fr 420px}
+  #tc-visual{overflow-y:auto;padding:24px;background:var(--bg)}
+  .tc-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+  .tc-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
+  .tc-card .tc-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+  .tc-card .tc-val{font-size:22px;font-weight:700;line-height:1.2}
+  .tc-card .tc-unit{font-size:12px;font-weight:400;color:var(--muted);margin-left:3px}
+  .tc-infobox{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;font-size:13px;color:var(--muted);line-height:1.75;margin-bottom:12px}
   /* login gate */
   #gate{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;align-items:center;justify-content:center}
   #gate .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:34px 30px;width:340px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.08)}
@@ -167,6 +176,7 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
   <button class="active" data-view="calc" onclick="showView('calc')">계산 / 3D 뷰어</button>
   <button data-view="cameras" onclick="showView('cameras')">카메라 DB</button>
   <button data-view="lenses" onclick="showView('lenses')">렌즈 DB</button>
+  <button data-view="telecentric" onclick="showView('telecentric')">텔레센트릭</button>
   <button data-view="projects" onclick="showView('projects')">프로젝트</button>
   <span style="flex:1"></span>
   <button id="btnAdminLogin" class="btn" onclick="toggleAdminLogin()" style="font-size:13px">🔒 관리자 로그인</button>
@@ -220,6 +230,58 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
         <h3>계산 결과</h3>
         <div class="results" id="results"></div>
         <div class="errmsg" id="errmsg"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== TELECENTRIC ===== -->
+  <section id="telecentric" class="view">
+    <div id="tc-visual">
+      <div style="margin-bottom:18px">
+        <h2 style="font-size:17px;margin:0 0 4px">텔레센트릭 렌즈 계산기</h2>
+        <p style="color:var(--muted);font-size:12px;margin:0">원근 오차 없는 정밀 계측 전용 — NA 기반 분해능·DOF 산출</p>
+      </div>
+      <div class="tc-grid" id="tc-cards"></div>
+      <div class="tc-infobox">
+        <strong style="color:var(--text);display:block;margin-bottom:6px">텔레센트릭 렌즈 특성</strong>
+        <ul style="margin:0;padding-left:16px">
+          <li>주광선(Chief Ray)이 광축과 평행 → WD 변화에도 배율 일정</li>
+          <li>원근 오차(Perspective Error) 없음 → 치수 측정 정확도 우수</li>
+          <li>피사계 심도 내에서 크기 왜곡 최소화</li>
+          <li>일반 렌즈 대비 대구경·고가이나 계측 정밀도 탁월</li>
+        </ul>
+      </div>
+      <div style="padding:10px 13px;background:#e8f1ff;border:1px solid #b9d4ff;border-radius:var(--radius);font-size:12px;color:#1d4ed8;line-height:1.7">
+        <strong>적용 공식</strong><br>
+        광학 분해능 = 0.61 × λ / NA &nbsp;(λ=550 nm, Rayleigh 기준)<br>
+        피사계 심도(DOF) = Pixel크기 / (배율 × NA) &nbsp;[μm]
+      </div>
+    </div>
+    <div class="sidepanel">
+      <div class="group">
+        <h3>카메라 <button class="mini pick" onclick="openPicker('camera','tc')">DB에서 선택</button></h3>
+        <div class="modeltag custom" id="tc-camModel">✎ 직접 입력</div>
+        <div class="field"><label>Width 해상도</label><input id="tc_w" type="number" oninput="tcRecalc()"><span class="unit">px</span></div>
+        <div class="field"><label>Height 해상도</label><input id="tc_h" type="number" oninput="tcRecalc()"><span class="unit">px</span></div>
+        <div class="field"><label>Pixel Size</label><input id="tc_px" type="number" step="0.01" oninput="tcRecalc()"><span class="unit">μm</span></div>
+      </div>
+      <div class="group">
+        <h3>텔레센트릭 렌즈</h3>
+        <div class="field"><label>Magnification</label><input id="tc_mag" type="number" step="0.001" oninput="tcRecalc()"><span class="unit">×</span></div>
+        <div class="field"><label>Working Distance</label><input id="tc_wd" type="number" step="0.1" oninput="tcRecalc()"><span class="unit">mm</span></div>
+        <div class="field"><label>NA</label><input id="tc_na" type="number" step="0.001" oninput="tcRecalc()"><span class="unit"></span></div>
+      </div>
+      <div class="group">
+        <h3>표시 옵션</h3>
+        <div class="field"><label>Nyquist Factor</label><input id="tc_nyq" type="number" step="0.1" value="2" oninput="tcRecalc()"><span class="unit">px</span></div>
+        <div class="field"><label>소수점 자릿수</label><input id="tc_dp" type="number" value="2" min="0" max="6" oninput="tcRecalc()"><span class="unit"></span></div>
+      </div>
+      <div class="group">
+        <h3>계산 결과</h3>
+        <div class="results" id="tc-results">
+          <div class="res-row"><span style="color:var(--muted);font-size:13px">파라미터를 입력하세요</span></div>
+        </div>
+        <div class="errmsg" id="tc-errmsg"></div>
       </div>
     </div>
   </section>
@@ -494,6 +556,67 @@ function syncTarget(id,val){
 }
 window.recalc=recalc;
 
+/* ============ telecentric calc ============ */
+let selectedTCCamera=null;
+function tcDp(){ return Math.max(0,Math.min(6,+v('tc_dp')||0)); }
+function tcFmt(n){ return (n==null||isNaN(n))?'—':Number(n).toFixed(tcDp()); }
+
+function tcCompute(){
+  const w=+v('tc_w'),h=+v('tc_h'),px=+v('tc_px');
+  const mag=+v('tc_mag'),na=+v('tc_na'),nyq=+v('tc_nyq');
+  const errs=[];
+  const sensorW=(w*px)/1000, sensorH=(h*px)/1000;
+  let fovW=NaN,fovH=NaN,pixRes=NaN,acc=NaN,optRes=NaN,dof=NaN;
+  if(mag>0){ fovW=sensorW/mag; fovH=sensorH/mag; pixRes=px/mag; }
+  else if(mag!==0||v('tc_mag')!=='') errs.push('배율은 0보다 커야 합니다');
+  if(pixRes&&nyq) acc=pixRes*nyq;
+  if(na>0){
+    optRes=(0.61*0.55)/na;            // Rayleigh, λ=550nm [μm]
+    if(mag>0) dof=px/(mag*na);       // total DOF [μm]
+  }
+  return {w,h,px,mag,na,nyq,sensorW,sensorH,fovW,fovH,pixRes,acc,optRes,dof,errs};
+}
+
+function tcRecalc(){
+  const r=tcCompute();
+  toggleErr('tc_mag',r.mag<=0&&v('tc_mag')!=='');
+  document.getElementById('tc-results').innerHTML=`
+    <div class="res-row"><span>Sensor W × H</span><span class="v">${tcFmt(r.sensorW)} × ${tcFmt(r.sensorH)} mm</span></div>
+    <div class="res-row big"><span>FOV Width</span><span class="v">${tcFmt(r.fovW)} mm</span></div>
+    <div class="res-row big"><span>FOV Height</span><span class="v">${tcFmt(r.fovH)} mm</span></div>
+    <div class="res-row"><span>Pixel Resolution</span><span class="v">${tcFmt(r.pixRes)} μm/px</span></div>
+    <div class="res-row big"><span>Total Accuracy</span><span class="v">${tcFmt(r.acc)} μm</span></div>
+    <div class="res-row"><span>Optical Resolution</span><span class="v">${tcFmt(r.optRes)} μm</span></div>
+    <div class="res-row big"><span>Depth of Field</span><span class="v">${isNaN(r.dof)?'—':tcFmt(r.dof)+' μm'}</span></div>`;
+  document.getElementById('tc-errmsg').textContent=r.errs.join(' · ');
+  const cards=[
+    {lbl:'FOV Width',   val:tcFmt(r.fovW),                   unit:'mm',    c:'var(--accent2)'},
+    {lbl:'FOV Height',  val:tcFmt(r.fovH),                   unit:'mm',    c:'var(--accent2)'},
+    {lbl:'Pixel Res',   val:tcFmt(r.pixRes),                  unit:'μm/px', c:'var(--good)'},
+    {lbl:'Accuracy',    val:tcFmt(r.acc),                    unit:'μm',    c:'var(--good)'},
+    {lbl:'Optical Res', val:tcFmt(r.optRes),                  unit:'μm',    c:'var(--accent)'},
+    {lbl:'DOF (total)', val:isNaN(r.dof)?'—':tcFmt(r.dof),  unit:'μm',    c:'var(--warn)'},
+  ];
+  document.getElementById('tc-cards').innerHTML=cards.map(c=>`
+    <div class="tc-card">
+      <div class="tc-lbl">${c.lbl}</div>
+      <div class="tc-val" style="color:${c.c}">${c.val}<span class="tc-unit">${c.unit}</span></div>
+    </div>`).join('');
+  const cm=document.getElementById('tc-camModel');
+  if(cm){
+    const m=selectedTCCamera&&approx(r.w,selectedTCCamera.width_px)&&approx(r.h,selectedTCCamera.height_px)&&approx(r.px,selectedTCCamera.pixel_size_um);
+    cm.className=m?'modeltag db':'modeltag custom';
+    cm.textContent=m?'📷 '+(selectedTCCamera.manufacturer?selectedTCCamera.manufacturer+' ':'')+selectedTCCamera.model_name:'✎ 직접 입력';
+  }
+}
+window.tcRecalc=tcRecalc;
+
+function applyTCCamera(c){
+  if(!c)return; selectedTCCamera=c;
+  setVal('tc_w',c.width_px); setVal('tc_h',c.height_px); setVal('tc_px',c.pixel_size_um);
+  tcRecalc();
+}
+
 /* ===== 관리자 인증 =====
    기본 관리자 비밀번호: admin  (배포 전 반드시 변경 — README_deploy.txt 참고)
    변경법: 브라우저 콘솔에서
@@ -680,6 +803,7 @@ window.showView=(name)=>{
   if(name==='calc') setTimeout(onResize,30);
   if(name==='cameras'){ renderCameras(); updateAdminUI(); }
   if(name==='lenses'){ renderLenses(); updateAdminUI(); }
+  if(name==='telecentric') tcRecalc();
   if(name==='projects') renderProjects();
 };
 
@@ -773,20 +897,24 @@ window.delLens=(id)=>{ if(confirm('이 렌즈를 삭제할까요?')){lenses=lens
 window.useLens=(id)=>{ applyLens(lenses.find(x=>x.id===id)); showView('calc'); toast('렌즈 적용됨'); };
 function applyLens(l){ if(!l)return; selectedLens=l; if(l.magnification)setVal('in_mag',l.magnification); if(l.focal_length_mm)setVal('in_f',l.focal_length_mm); recalc(); }
 
-/* ============ picker modal (from calc view) ============ */
-window.openPicker=(type)=>{
+/* ============ picker modal (from calc / telecentric view) ============ */
+window.openPicker=(type,mode)=>{
   const list=type==='camera'?cameras:lenses;
   const rows=list.map(o=>type==='camera'
     ? `<tr><td>${esc(o.manufacturer)}</td><td>${esc(o.model_name)}</td><td>${o.width_px}×${o.height_px}</td><td>${o.pixel_size_um}μm</td>
-        <td><button class="mini" onclick="pickItem('camera','${o.id}')">선택</button></td></tr>`
+        <td><button class="mini" onclick="pickItem('camera','${o.id}','${mode||''}')">선택</button></td></tr>`
     : `<tr><td>${esc(o.manufacturer)}</td><td>${esc(o.model_name)}</td><td>f${o.focal_length_mm||'—'}</td><td>×${o.magnification||'—'}</td>
-        <td><button class="mini" onclick="pickItem('lens','${o.id}')">선택</button></td></tr>`).join('');
+        <td><button class="mini" onclick="pickItem('lens','${o.id}','${mode||''}')">선택</button></td></tr>`).join('');
   openModal(type==='camera'?'카메라 선택':'렌즈 선택',
     `<table><tbody>${rows}</tbody></table>`);
 };
-window.pickItem=(type,id)=>{
-  if(type==='camera') applyCamera(cameras.find(x=>x.id===id));
-  else applyLens(lenses.find(x=>x.id===id));
+window.pickItem=(type,id,mode)=>{
+  if(mode==='tc'){
+    if(type==='camera') applyTCCamera(cameras.find(x=>x.id===id));
+  } else {
+    if(type==='camera') applyCamera(cameras.find(x=>x.id===id));
+    else applyLens(lenses.find(x=>x.id===id));
+  }
   closeModal(); toast('적용됨');
 };
 
