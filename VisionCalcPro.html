@@ -241,9 +241,6 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
       <div class="toolbar">
         <input class="search" id="camSearch" placeholder="제조사 / 모델명 / 인터페이스 검색" oninput="renderCameras()">
         <span id="dbSource" style="color:var(--muted);font-size:12px">DB: 로딩중…</span>
-        <div class="spacer" style="flex:1"></div>
-        <button class="btn" id="btnExportTeamDB" onclick="exportTeamDB()" title="현재 DB를 db.json으로 받아 공유 폴더에 덮어쓰면 전체에 반영됩니다">팀 DB 내보내기</button>
-        <button class="btn primary" id="btnAddCam" onclick="openCamEdit()">+ 카메라 등록</button>
       </div>
       <table><thead><tr>
         <th>제조사</th><th>모델명</th><th>해상도</th><th>Pixel(μm)</th><th>센서</th><th>인터페이스</th><th>FPS</th><th></th>
@@ -256,8 +253,6 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
     <div class="tablewrap">
       <div class="toolbar">
         <input class="search" id="lensSearch" placeholder="제조사 / 모델명 / 마운트 검색" oninput="renderLenses()">
-        <div class="spacer" style="flex:1"></div>
-        <button class="btn primary" id="btnAddLens" onclick="openLensEdit()">+ 렌즈 등록</button>
       </div>
       <table><thead><tr>
         <th>제조사</th><th>모델명</th><th>f(mm)</th><th>배율</th><th>마운트</th><th>WD(mm)</th><th>센서포맷</th><th></th>
@@ -291,8 +286,6 @@ const DB = {
   load(k,def){ try{return JSON.parse(localStorage.getItem('vcp_'+k))??def}catch(e){return def} },
   save(k,v){ localStorage.setItem('vcp_'+k, JSON.stringify(v)); }
 };
-const uid = ()=> Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-
 const seedCameras = [
   {id:'cam-seed-1',manufacturer:'Basler',model_name:'acA2440-75um',width_px:2448,height_px:2048,pixel_size_um:3.45,sensor_type:'CMOS',color_mono:'Mono',interface:'USB3',frame_rate_fps:75,mount:'C-mount',sensor_format:'2/3"'},
   {id:'cam-seed-2',manufacturer:'FLIR',model_name:'BFS-U3-51S5M',width_px:2448,height_px:2048,pixel_size_um:3.45,sensor_type:'CMOS',color_mono:'Mono',interface:'USB3',frame_rate_fps:75,mount:'C-mount',sensor_format:'2/3"'},
@@ -306,12 +299,6 @@ const seedLenses = [
   {id:'lens-seed-4',manufacturer:'Fujinon',model_name:'HF50SA-1',focal_length_mm:50,magnification:0.05,mount_type:'C-mount',min_wd_mm:200,max_wd_mm:99999,sensor_format:'2/3"'}
 ];
 
-/* ---- Team shared DB (db.json) + per-user local overlay ----
-   teamCameras/teamLenses = 공유 db.json 기준선 (관리자가 갱신)
-   overlay(cam_overlay/cam_del) = 개인이 추가·수정·삭제한 내역 (localStorage)
-   화면에 보이는 cameras/lenses = 기준선 위에 overlay 병합 결과 */
-let teamCameras = seedCameras.slice();
-let teamLenses  = seedLenses.slice();
 let cameras = [], lenses = [];
 let projects= DB.load('projects',[]);
 let dbSource = '내장 샘플';
@@ -321,44 +308,15 @@ async function loadTeamDB(){
     const res = await fetch('db.json', {cache:'no-store'});
     if(res.ok){
       const j = await res.json();
-      if(Array.isArray(j.cameras)) teamCameras = j.cameras;
-      if(Array.isArray(j.lenses))  teamLenses  = j.lenses;
+      if(Array.isArray(j.cameras)) cameras = j.cameras.filter(o=>o && o.id && o.model_name);
+      if(Array.isArray(j.lenses))  lenses  = j.lenses.filter(o=>o && o.id && o.model_name);
       dbSource = '공유 db.json' + (j.updated? ' · '+j.updated : '');
+      return;
     }
   }catch(e){ /* 파일 없으면 내장 샘플 사용 */ }
-  buildCameras(); buildLenses();
+  cameras = seedCameras.slice();
+  lenses  = seedLenses.slice();
 }
-function mergeOverlay(base, overlayKey, delKey){
-  // db.json 의 "_section" 구분자 등 데이터가 아닌 항목 제거 (id + model_name 필수)
-  // ★ 기준선 객체를 복제해서 사용 — 화면 편집(Object.assign)이 teamDB 원본을 변형시켜
-  //    persistOverlay 의 변경 감지가 무력화되던 버그 방지
-  base = base.filter(o=>o && o.id && o.model_name).map(o=>({...o}));
-  const del = new Set(DB.load(delKey,[]));
-  const adds = DB.load(overlayKey,[]);
-  const addMap = Object.fromEntries(adds.map(o=>[o.id,o]));
-  const merged = base.filter(o=>!del.has(o.id)).map(o=>addMap[o.id]||o);
-  adds.forEach(o=>{ if(!base.some(b=>b.id===o.id)) merged.push(o); });
-  return merged;
-}
-function buildCameras(){ cameras = mergeOverlay(teamCameras,'cam_overlay','cam_del'); }
-function buildLenses(){  lenses  = mergeOverlay(teamLenses,'lens_overlay','lens_del'); }
-function persistOverlay(list, base, overlayKey, delKey){
-  const baseMap = Object.fromEntries(base.map(b=>[b.id,JSON.stringify(b)]));
-  const adds = list.filter(o=>baseMap[o.id]===undefined || baseMap[o.id]!==JSON.stringify(o));
-  const delIds = base.filter(b=>!list.some(o=>o.id===b.id)).map(b=>b.id);
-  DB.save(overlayKey,adds); DB.save(delKey,delIds);
-}
-function persistCameras(){ persistOverlay(cameras,teamCameras,'cam_overlay','cam_del'); }
-function persistLenses(){  persistOverlay(lenses,teamLenses,'lens_overlay','lens_del'); }
-
-// 관리자: 현재 DB를 db.json으로 내보내기 → 공유 위치에 덮어쓰면 전체 반영
-window.exportTeamDB=()=>{
-  const data={updated:new Date().toISOString().slice(0,10), cameras, lenses};
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
-  a.download='db.json'; a.click();
-  toast('db.json 내보냄 — 공유 폴더에 덮어쓰세요');
-};
 
 /* ============ optics engine ============ */
 function compute(){
@@ -685,38 +643,9 @@ function renderCameras(){
     <td>${esc(c.interface||'')}</td><td>${c.frame_rate_fps||''}</td>
     <td class="rowbtns">
       <button class="mini" onclick="useCamera('${c.id}')">사용</button>
-      <button class="mini" onclick="openCamEdit('${c.id}')">수정</button>
-      <button class="mini del" onclick="delCamera('${c.id}')">삭제</button>
     </td></tr>`).join('') : `<tr><td colspan="8" class="empty">결과 없음</td></tr>`;
 }
 window.renderCameras=renderCameras;
-window.openCamEdit=(id)=>{
-  const c=id?cameras.find(x=>x.id===id):{};
-  openModal(`${id?'카메라 수정':'카메라 등록'}`,`
-    <div class="modal-grid">
-      ${mInput('제조사','c_man',c.manufacturer)}${mInput('모델명','c_mod',c.model_name)}
-      ${mInput('Width(px)','c_w',c.width_px,'number')}${mInput('Height(px)','c_h',c.height_px,'number')}
-      ${mInput('Pixel Size(μm)','c_px',c.pixel_size_um,'number')}
-      ${mSelect('센서타입','c_st',['CMOS','CCD'],c.sensor_type)}
-      ${mSelect('컬러/모노','c_cm',['Mono','Color'],c.color_mono)}
-      ${mSelect('인터페이스','c_if',['GigE','USB3','Camera Link','CoaXPress'],c.interface)}
-      ${mInput('FPS','c_fps',c.frame_rate_fps,'number')}${mInput('마운트','c_mt',c.mount)}
-      ${mInput('센서포맷','c_sf',c.sensor_format)}
-    </div>
-    <div class="modal-actions">
-      <button class="btn" onclick="closeModal()">취소</button>
-      <button class="btn primary" onclick="saveCamera('${id||''}')">저장</button>
-    </div>`);
-};
-window.saveCamera=(id)=>{
-  const o={manufacturer:mv('c_man'),model_name:mv('c_mod'),width_px:+mv('c_w'),height_px:+mv('c_h'),
-    pixel_size_um:+mv('c_px'),sensor_type:mv('c_st'),color_mono:mv('c_cm'),interface:mv('c_if'),
-    frame_rate_fps:+mv('c_fps'),mount:mv('c_mt'),sensor_format:mv('c_sf')};
-  if(!o.model_name){toast('모델명을 입력하세요');return;}
-  if(id){Object.assign(cameras.find(x=>x.id===id),o);} else {o.id=uid();cameras.push(o);}
-  persistCameras(); closeModal(); renderCameras(); toast('저장됨');
-};
-window.delCamera=(id)=>{ if(confirm('이 카메라를 삭제할까요?')){cameras=cameras.filter(x=>x.id!==id);persistCameras();renderCameras();} };
 window.useCamera=(id)=>{ applyCamera(cameras.find(x=>x.id===id)); showView('calc'); toast('카메라 적용됨'); };
 function applyCamera(c){ if(!c)return; selectedCamera=c; setVal('in_w',c.width_px);setVal('in_h',c.height_px);setVal('in_px',c.pixel_size_um); recalc(); }
 
@@ -732,34 +661,9 @@ function renderLenses(){
     <td>${esc(l.sensor_format||'')}</td>
     <td class="rowbtns">
       <button class="mini" onclick="useLens('${l.id}')">사용</button>
-      <button class="mini" onclick="openLensEdit('${l.id}')">수정</button>
-      <button class="mini del" onclick="delLens('${l.id}')">삭제</button>
     </td></tr>`).join('') : `<tr><td colspan="8" class="empty">결과 없음</td></tr>`;
 }
 window.renderLenses=renderLenses;
-window.openLensEdit=(id)=>{
-  const l=id?lenses.find(x=>x.id===id):{};
-  openModal(`${id?'렌즈 수정':'렌즈 등록'}`,`
-    <div class="modal-grid">
-      ${mInput('제조사','l_man',l.manufacturer)}${mInput('모델명','l_mod',l.model_name)}
-      ${mInput('초점거리(mm)','l_f',l.focal_length_mm,'number')}${mInput('배율','l_mag',l.magnification,'number')}
-      ${mSelect('마운트','l_mt',['C-mount','CS-mount','F-mount','M42','M72'],l.mount_type)}
-      ${mInput('센서포맷','l_sf',l.sensor_format)}
-      ${mInput('최소 WD(mm)','l_minwd',l.min_wd_mm,'number')}${mInput('최대 WD(mm)','l_maxwd',l.max_wd_mm,'number')}
-    </div>
-    <div class="modal-actions">
-      <button class="btn" onclick="closeModal()">취소</button>
-      <button class="btn primary" onclick="saveLens('${id||''}')">저장</button>
-    </div>`);
-};
-window.saveLens=(id)=>{
-  const o={manufacturer:mv('l_man'),model_name:mv('l_mod'),focal_length_mm:+mv('l_f'),magnification:+mv('l_mag'),
-    mount_type:mv('l_mt'),sensor_format:mv('l_sf'),min_wd_mm:+mv('l_minwd'),max_wd_mm:+mv('l_maxwd')};
-  if(!o.model_name){toast('모델명을 입력하세요');return;}
-  if(id){Object.assign(lenses.find(x=>x.id===id),o);} else {o.id=uid();lenses.push(o);}
-  persistLenses(); closeModal(); renderLenses(); toast('저장됨');
-};
-window.delLens=(id)=>{ if(confirm('이 렌즈를 삭제할까요?')){lenses=lenses.filter(x=>x.id!==id);persistLenses();renderLenses();} };
 window.useLens=(id)=>{ applyLens(lenses.find(x=>x.id===id)); showView('calc'); toast('렌즈 적용됨'); };
 function applyLens(l){
   if(!l)return; selectedLens=l;
@@ -884,6 +788,7 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
 window.toast=toast;
 
 /* ============ boot ============ */
+['cam_overlay','cam_del','lens_overlay','lens_del'].forEach(k=>localStorage.removeItem('vcp_'+k));
 setVal('in_w',2448);setVal('in_h',2048);setVal('in_px',3.45);
 setVal('in_mag',0.1);setVal('in_f',16);setVal('in_nyq',2);setVal('in_dp',2);
 init3D(); recalc();
