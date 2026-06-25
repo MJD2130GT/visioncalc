@@ -442,7 +442,7 @@ function recalc(){
     const lensMatch=selectedLens&&selectedLens.lens_type&&approx(r.mag,selectedLens.magnification)&&approx(+v('in_na'),selectedLens.na);
     if(lens){ lens.className='modeltag db'; lens.textContent=lensMatch?'🔭 '+(selectedLens.manufacturer?selectedLens.manufacturer+' ':'')+selectedLens.model_name:'🔭 텔레센트릭 렌즈'; }
   }
-  update3D(isTc?{...r,wd:isNaN(tcWd)?r.wd:tcWd}:r);
+  update3D(isTc?{...r,wd:isNaN(tcWd)?r.wd:tcWd,isTc:true}:r);
 }
 
 /* ===== 모델명 / 커스텀 표시 ===== */
@@ -555,10 +555,11 @@ function update3D(r){
   const fovW=(r.fovW&&!isNaN(r.fovW))? r.fovW:50;
   const fovH=(r.fovH&&!isNaN(r.fovH))? r.fovH:40;
   const wd  =(r.wd  &&!isNaN(r.wd))  ? r.wd  :150;
+  const isTc=!!r.isTc;
   const s=120/Math.max(wd,1);
   const fw=fovW*s, fh=fovH*s, L=wd*s;
 
-  // ── materials ────────────────────────────────────────────────
+  /* ── 공통 재질 ───────────────────────────────────────────── */
   const mBody  =new THREE.MeshStandardMaterial({color:0x2b3a4a,metalness:.72,roughness:.28});
   const mBodyDk=new THREE.MeshStandardMaterial({color:0x1a2530,metalness:.78,roughness:.22});
   const mBarrel=new THREE.MeshStandardMaterial({color:0x1c1c1e,metalness:.55,roughness:.45});
@@ -568,76 +569,137 @@ function update3D(r){
   const mGlint =new THREE.MeshStandardMaterial({color:0x93c5fd,transparent:true,opacity:.38,side:THREE.DoubleSide});
   const mConn  =new THREE.MeshStandardMaterial({color:0x0a0f16,metalness:.35,roughness:.80});
   const mLED   =new THREE.MeshStandardMaterial({color:0x22c55e,emissive:0x22c55e,emissiveIntensity:1.4});
-  const mk=(g,m,x,y,z,rx=0,ry=0,rz=0)=>{
-    const o=new THREE.Mesh(g,m); o.position.set(x,y,z); o.rotation.set(rx,ry,rz); group.add(o); return o;
+  const mk=(g,m,x,y,z,rx=0,ry=0)=>{
+    const o=new THREE.Mesh(g,m); o.position.set(x,y,z); o.rotation.x=rx; o.rotation.y=ry; group.add(o); return o;
   };
 
-  /* ── LENS (물체 쪽 → 카메라 쪽, 아래→위) ────────────────── */
-  // 전면 유리 원소 (AR 코팅 느낌의 진한 파랑)
-  mk(new THREE.CircleGeometry(11,56), mGlass, 0,L-5.5,0, Math.PI/2);
-  // 유리 반사 글린트
-  mk(new THREE.CircleGeometry(4.5,24), mGlint, -2.5,L-5.35,2.5, Math.PI/2);
+  const glassY=L-5.5;
+  let lensTopY;
 
-  // 전면 하우징 링 (크롬 실버)
-  mk(new THREE.CylinderGeometry(12.5,12.5,4,44), mMount, 0,L-3,0);
+  if(isTc){
+    /* ═══ 텔레센트릭 렌즈 ══════════════════════════════════ */
+    // 전면 구경 반지름: FOV에 비례 (TC 렌즈의 핵심 — 대구경 전면 원소)
+    const tcR=Math.min(Math.max(fw*0.55+10, 18), 52);
 
-  // 포커스 링 (가장 넓은 구간, 조금 다른 색으로 구분)
-  mk(new THREE.CylinderGeometry(15.8,15.8,9,44), mFocus, 0,L+3.5,0);
-  // 포커스 링 눈금 밴드 (얇은 밝은 링)
-  mk(new THREE.CylinderGeometry(16.1,16.1,2,44,1,true),
-    new THREE.MeshStandardMaterial({color:0xd1d5db,metalness:.2,roughness:.8}), 0,L+3,0);
+    // 대형 전면 유리 원소 (AR 코팅, 진한 파랑)
+    mk(new THREE.CircleGeometry(tcR-1,56), mGlass, 0,glassY,0, Math.PI/2);
+    mk(new THREE.CircleGeometry((tcR-1)*.38,24), mGlint,
+       -(tcR-1)*.18, glassY+.15, (tcR-1)*.18, Math.PI/2);
 
-  // 메인 배럴 (앞쪽보다 약간 좁아지는 형상)
-  mk(new THREE.CylinderGeometry(13,14.2,13,44), mBarrel, 0,L+13,0);
+    // 전면 하우징 링 (크롬)
+    mk(new THREE.CylinderGeometry(tcR,tcR,5,44), mMount, 0,glassY+2.5,0);
 
-  // 조리개 링 (두 배럴 사이 얇은 크롬 링)
-  mk(new THREE.CylinderGeometry(13.5,13.5,3,44), mMount, 0,L+20.5,0);
+    // 긴 메인 배럴 (TC 렌즈 특유의 균일한 대형 원통)
+    const bH=46;
+    mk(new THREE.CylinderGeometry(tcR-2,tcR-2,bH,44), mBarrel, 0,glassY+5+bH/2,0);
 
-  // 후방 배럴 (C-마운트 나사산 부분, 가장 얇음)
-  mk(new THREE.CylinderGeometry(11.2,13,5,44), mBarrel, 0,L+24.5,0);
+    // 후방 테이퍼 (C-마운트 어댑터 쪽으로 좁아짐)
+    mk(new THREE.CylinderGeometry(12,tcR-2,8,44), mBarrel, 0,glassY+5+bH+4,0);
+    // 어댑터 크롬 링
+    mk(new THREE.CylinderGeometry(12.5,12.5,3,44), mMount, 0,glassY+5+bH+9.5,0);
+    // C-마운트 수나사 배럴
+    mk(new THREE.CylinderGeometry(11.2,12,5,44), mBarrel, 0,glassY+5+bH+13.5,0);
 
-  /* ── 카메라 바디 ──────────────────────────────────────────── */
-  // C-마운트 수용 링 (카메라 전면 크롬 링)
-  mk(new THREE.CylinderGeometry(13,13,4,44), mMount, 0,L+29,0);
+    lensTopY=glassY+5+bH+16;
 
-  // 메인 하우징 (정사각형 단면, 산업용 박스 카메라)
-  mk(new THREE.BoxGeometry(28,36,28), mBody, 0,L+48,0);
+  } else {
+    /* ═══ 일반 렌즈 ════════════════════════════════════════ */
+    // 전면 유리 원소 (AR 코팅)
+    mk(new THREE.CircleGeometry(11,56), mGlass, 0,glassY,0, Math.PI/2);
+    mk(new THREE.CircleGeometry(4.5,24), mGlint, -2.5,glassY+.15,2.5, Math.PI/2);
 
-  // 측면 방열 리브 (좌우 각 1개, 약간 어두운 색)
-  mk(new THREE.BoxGeometry(1,30,26), mBodyDk, -13.9,L+48,0);
-  mk(new THREE.BoxGeometry(1,30,26), mBodyDk,  13.9,L+48,0);
+    // 전면 하우징 링 (크롬)
+    mk(new THREE.CylinderGeometry(12.5,12.5,4,44), mMount, 0,L-3,0);
 
-  // 후면 I/O 패널 (약간 어두운 후면)
-  mk(new THREE.BoxGeometry(28,3,28), mBodyDk, 0,L+67.5,0);
+    // 포커스 링 + 눈금 밴드
+    mk(new THREE.CylinderGeometry(15.8,15.8,9,44), mFocus, 0,L+3.5,0);
+    mk(new THREE.CylinderGeometry(16.1,16.1,2,44,1,true),
+      new THREE.MeshStandardMaterial({color:0xd1d5db,metalness:.2,roughness:.8}), 0,L+3,0);
 
-  // GigE / USB3 커넥터 포트
-  mk(new THREE.BoxGeometry(11,5.5,7.5), mConn, 0,L+71,1);
-  // 보조 커넥터 (전원/트리거)
-  mk(new THREE.BoxGeometry(5,4.5,5), mConn, 8,L+71,-5);
+    // 메인 배럴 (테이퍼)
+    mk(new THREE.CylinderGeometry(13,14.2,13,44), mBarrel, 0,L+13,0);
 
-  // 상태 LED (초록 발광)
-  mk(new THREE.SphereGeometry(1.8,10,10), mLED, 14.6,L+57,5);
+    // 조리개 링 (크롬 악센트)
+    mk(new THREE.CylinderGeometry(13.5,13.5,3,44), mMount, 0,L+20.5,0);
+
+    // 후방 C-마운트 배럴
+    mk(new THREE.CylinderGeometry(11.2,13,5,44), mBarrel, 0,L+24.5,0);
+
+    lensTopY=L+27;
+  }
+
+  /* ── 카메라 바디 (공통) ──────────────────────────────────── */
+  const cb=lensTopY;
+
+  // C-마운트 수용 링
+  mk(new THREE.CylinderGeometry(13,13,4,44), mMount, 0,cb+2,0);
+
+  // 메인 하우징 박스 (정사각형 단면)
+  const hcy=cb+22;
+  mk(new THREE.BoxGeometry(28,36,28), mBody, 0,hcy,0);
+  // 측면 방열 리브
+  mk(new THREE.BoxGeometry(1,30,26), mBodyDk, -13.9,hcy,0);
+  mk(new THREE.BoxGeometry(1,30,26), mBodyDk,  13.9,hcy,0);
+
+  // 후면 I/O 패널
+  mk(new THREE.BoxGeometry(28,3,28), mBodyDk, 0,cb+41.5,0);
+  // GigE / USB3 커넥터
+  mk(new THREE.BoxGeometry(11,5.5,7.5), mConn, 0,cb+45,1);
+  mk(new THREE.BoxGeometry(5,4.5,5),    mConn, 8,cb+45,-5);
+
+  // 상태 LED
+  mk(new THREE.SphereGeometry(1.8,10,10), mLED, 14.6,cb+34,5);
 
   /* ── 광축 빔 ──────────────────────────────────────────────── */
   mk(new THREE.CylinderGeometry(.45,.45,L,8),
     new THREE.MeshBasicMaterial({color:0x3b82f6,transparent:true,opacity:.38}), 0,L/2,0);
 
-  /* ── 시야각 프러스텀 ──────────────────────────────────────── */
-  const apex=new THREE.Vector3(0,L-5,0);
-  const corners=[
-    new THREE.Vector3(-fw/2,0,-fh/2), new THREE.Vector3(fw/2,0,-fh/2),
-    new THREE.Vector3(fw/2,0, fh/2),  new THREE.Vector3(-fw/2,0, fh/2)
-  ];
-  const fg=new THREE.BufferGeometry(); const fv=[];
-  corners.forEach((p,i)=>{ const n=corners[(i+1)%4]; fv.push(apex.x,apex.y,apex.z,p.x,p.y,p.z,n.x,n.y,n.z); });
-  fg.setAttribute('position',new THREE.Float32BufferAttribute(fv,3));
-  fg.computeVertexNormals();
-  group.add(new THREE.Mesh(fg,new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:.11,side:THREE.DoubleSide})));
-  const eg=new THREE.BufferGeometry(); const ev=[];
-  corners.forEach(p=>ev.push(apex.x,apex.y,apex.z,p.x,p.y,p.z));
-  corners.forEach((p,i)=>{ const n=corners[(i+1)%4]; ev.push(p.x,p.y,p.z,n.x,n.y,n.z); });
-  eg.setAttribute('position',new THREE.Float32BufferAttribute(ev,3));
-  group.add(new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:0x22d3ee,transparent:true,opacity:.7})));
+  /* ── FOV 시각화 ───────────────────────────────────────────── */
+  const mFovFill=new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:.09,side:THREE.DoubleSide});
+  const mFovLine=new THREE.LineBasicMaterial({color:0x22d3ee,transparent:true,opacity:.7});
+
+  if(isTc){
+    // 텔레센트릭: 평행광 직사각형 빔 (수직 직선 + 상하 직사각형)
+    const ev=[
+      -fw/2,0,-fh/2, -fw/2,glassY,-fh/2,
+       fw/2,0,-fh/2,  fw/2,glassY,-fh/2,
+       fw/2,0, fh/2,  fw/2,glassY, fh/2,
+      -fw/2,0, fh/2, -fw/2,glassY, fh/2,
+      -fw/2,0,-fh/2,  fw/2,0,-fh/2,
+       fw/2,0,-fh/2,  fw/2,0, fh/2,
+       fw/2,0, fh/2, -fw/2,0, fh/2,
+      -fw/2,0, fh/2, -fw/2,0,-fh/2,
+    ];
+    const eg=new THREE.BufferGeometry();
+    eg.setAttribute('position',new THREE.Float32BufferAttribute(ev,3));
+    group.add(new THREE.LineSegments(eg,mFovLine));
+
+    // 측면 반투명 패널 4장
+    const addPlane=(w,h,x,y,z,ry=0)=>{
+      const p=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mFovFill);
+      p.position.set(x,y,z); p.rotation.y=ry; group.add(p);
+    };
+    addPlane(fw,glassY, 0,glassY/2,-fh/2, 0);
+    addPlane(fw,glassY, 0,glassY/2, fh/2, 0);
+    addPlane(fh,glassY,-fw/2,glassY/2,0, Math.PI/2);
+    addPlane(fh,glassY, fw/2,glassY/2,0, Math.PI/2);
+
+  } else {
+    // 일반 렌즈: 수렴 프러스텀
+    const apex=new THREE.Vector3(0,glassY,0);
+    const co=[new THREE.Vector3(-fw/2,0,-fh/2),new THREE.Vector3(fw/2,0,-fh/2),
+              new THREE.Vector3(fw/2,0,fh/2),  new THREE.Vector3(-fw/2,0,fh/2)];
+    const fg=new THREE.BufferGeometry(); const fv=[];
+    co.forEach((p,i)=>{ const n=co[(i+1)%4]; fv.push(apex.x,apex.y,apex.z,p.x,p.y,p.z,n.x,n.y,n.z); });
+    fg.setAttribute('position',new THREE.Float32BufferAttribute(fv,3));
+    fg.computeVertexNormals();
+    group.add(new THREE.Mesh(fg,new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:.11,side:THREE.DoubleSide})));
+    const eg=new THREE.BufferGeometry(); const ev=[];
+    co.forEach(p=>ev.push(apex.x,apex.y,apex.z,p.x,p.y,p.z));
+    co.forEach((p,i)=>{ const n=co[(i+1)%4]; ev.push(p.x,p.y,p.z,n.x,n.y,n.z); });
+    eg.setAttribute('position',new THREE.Float32BufferAttribute(ev,3));
+    group.add(new THREE.LineSegments(eg,mFovLine));
+  }
 
   /* ── 물체면 ───────────────────────────────────────────────── */
   const plate=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(fw,4),Math.max(fh,4)),
