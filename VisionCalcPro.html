@@ -519,8 +519,9 @@ function init3D(){
   camera3.position.set(180,140,260);
   controls=new OrbitControls(camera3,renderer.domElement);
   controls.enableDamping=true;
-  scene.add(new THREE.HemisphereLight(0xffffff,0x222a33,1.1));
-  const dl=new THREE.DirectionalLight(0xffffff,1.2); dl.position.set(120,200,160); scene.add(dl);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x1a2535,1.0));
+  const dl=new THREE.DirectionalLight(0xffffff,1.4); dl.position.set(120,200,160); scene.add(dl);
+  const dl2=new THREE.DirectionalLight(0xd0e8ff,0.4); dl2.position.set(-80,60,-120); scene.add(dl2);
   const grid=new THREE.GridHelper(800,40,0x9aa6b4,0xc2cad4); scene.add(grid);
   scene.add(new THREE.AxesHelper(60));
   group=new THREE.Group(); scene.add(group);
@@ -551,52 +552,101 @@ function clearScene(){
 function update3D(r){
   if(!scene) return;
   clearScene();
-  // scale: map physical mm into a comfortable scene size
-  const fovW = (r.fovW&&!isNaN(r.fovW))? r.fovW : 50;
-  const fovH = (r.fovH&&!isNaN(r.fovH))? r.fovH : 40;
-  const wd   = (r.wd&&!isNaN(r.wd))? r.wd : 150;
-  const target = 120; // scene units for WD
-  const s = target/Math.max(wd,1);
+  const fovW=(r.fovW&&!isNaN(r.fovW))? r.fovW:50;
+  const fovH=(r.fovH&&!isNaN(r.fovH))? r.fovH:40;
+  const wd  =(r.wd  &&!isNaN(r.wd))  ? r.wd  :150;
+  const s=120/Math.max(wd,1);
   const fw=fovW*s, fh=fovH*s, L=wd*s;
 
-  // camera body
-  const body=new THREE.Mesh(new THREE.BoxGeometry(26,26,40),
-    new THREE.MeshStandardMaterial({color:0x3b4654,metalness:.6,roughness:.4}));
-  body.position.set(0,L+34,0); group.add(body);
-  // lens
-  const lens=new THREE.Mesh(new THREE.CylinderGeometry(11,11,26,32),
-    new THREE.MeshStandardMaterial({color:0x222a33,metalness:.5,roughness:.5}));
-  lens.position.set(0,L+8,0); group.add(lens);
-  const glass=new THREE.Mesh(new THREE.CircleGeometry(10,32),
-    new THREE.MeshStandardMaterial({color:0x2b6cb0,metalness:.3,roughness:.1,side:THREE.DoubleSide}));
-  glass.rotation.x=Math.PI/2; glass.position.set(0,L-5.1,0); group.add(glass);
-  // optical axis beam
-  const beam=new THREE.Mesh(new THREE.CylinderGeometry(.6,.6,L,8),
-    new THREE.MeshBasicMaterial({color:0x3b82f6,transparent:true,opacity:.55}));
-  beam.position.set(0,L/2,0); group.add(beam);
-  // FOV frustum (apex at lens, base at object plane)
+  // ── materials ────────────────────────────────────────────────
+  const mBody  =new THREE.MeshStandardMaterial({color:0x2b3a4a,metalness:.72,roughness:.28});
+  const mBodyDk=new THREE.MeshStandardMaterial({color:0x1a2530,metalness:.78,roughness:.22});
+  const mBarrel=new THREE.MeshStandardMaterial({color:0x1c1c1e,metalness:.55,roughness:.45});
+  const mFocus =new THREE.MeshStandardMaterial({color:0x353e4c,metalness:.82,roughness:.18});
+  const mMount =new THREE.MeshStandardMaterial({color:0x8090a0,metalness:.92,roughness:.10});
+  const mGlass =new THREE.MeshStandardMaterial({color:0x0f2a5e,metalness:.05,roughness:.02,transparent:true,opacity:.92});
+  const mGlint =new THREE.MeshStandardMaterial({color:0x93c5fd,transparent:true,opacity:.38,side:THREE.DoubleSide});
+  const mConn  =new THREE.MeshStandardMaterial({color:0x0a0f16,metalness:.35,roughness:.80});
+  const mLED   =new THREE.MeshStandardMaterial({color:0x22c55e,emissive:0x22c55e,emissiveIntensity:1.4});
+  const mk=(g,m,x,y,z,rx=0,ry=0,rz=0)=>{
+    const o=new THREE.Mesh(g,m); o.position.set(x,y,z); o.rotation.set(rx,ry,rz); group.add(o); return o;
+  };
+
+  /* ── LENS (물체 쪽 → 카메라 쪽, 아래→위) ────────────────── */
+  // 전면 유리 원소 (AR 코팅 느낌의 진한 파랑)
+  mk(new THREE.CircleGeometry(11,56), mGlass, 0,L-5.5,0, Math.PI/2);
+  // 유리 반사 글린트
+  mk(new THREE.CircleGeometry(4.5,24), mGlint, -2.5,L-5.35,2.5, Math.PI/2);
+
+  // 전면 하우징 링 (크롬 실버)
+  mk(new THREE.CylinderGeometry(12.5,12.5,4,44), mMount, 0,L-3,0);
+
+  // 포커스 링 (가장 넓은 구간, 조금 다른 색으로 구분)
+  mk(new THREE.CylinderGeometry(15.8,15.8,9,44), mFocus, 0,L+3.5,0);
+  // 포커스 링 눈금 밴드 (얇은 밝은 링)
+  mk(new THREE.CylinderGeometry(16.1,16.1,2,44,1,true),
+    new THREE.MeshStandardMaterial({color:0xd1d5db,metalness:.2,roughness:.8}), 0,L+3,0);
+
+  // 메인 배럴 (앞쪽보다 약간 좁아지는 형상)
+  mk(new THREE.CylinderGeometry(13,14.2,13,44), mBarrel, 0,L+13,0);
+
+  // 조리개 링 (두 배럴 사이 얇은 크롬 링)
+  mk(new THREE.CylinderGeometry(13.5,13.5,3,44), mMount, 0,L+20.5,0);
+
+  // 후방 배럴 (C-마운트 나사산 부분, 가장 얇음)
+  mk(new THREE.CylinderGeometry(11.2,13,5,44), mBarrel, 0,L+24.5,0);
+
+  /* ── 카메라 바디 ──────────────────────────────────────────── */
+  // C-마운트 수용 링 (카메라 전면 크롬 링)
+  mk(new THREE.CylinderGeometry(13,13,4,44), mMount, 0,L+29,0);
+
+  // 메인 하우징 (정사각형 단면, 산업용 박스 카메라)
+  mk(new THREE.BoxGeometry(28,36,28), mBody, 0,L+48,0);
+
+  // 측면 방열 리브 (좌우 각 1개, 약간 어두운 색)
+  mk(new THREE.BoxGeometry(1,30,26), mBodyDk, -13.9,L+48,0);
+  mk(new THREE.BoxGeometry(1,30,26), mBodyDk,  13.9,L+48,0);
+
+  // 후면 I/O 패널 (약간 어두운 후면)
+  mk(new THREE.BoxGeometry(28,3,28), mBodyDk, 0,L+67.5,0);
+
+  // GigE / USB3 커넥터 포트
+  mk(new THREE.BoxGeometry(11,5.5,7.5), mConn, 0,L+71,1);
+  // 보조 커넥터 (전원/트리거)
+  mk(new THREE.BoxGeometry(5,4.5,5), mConn, 8,L+71,-5);
+
+  // 상태 LED (초록 발광)
+  mk(new THREE.SphereGeometry(1.8,10,10), mLED, 14.6,L+57,5);
+
+  /* ── 광축 빔 ──────────────────────────────────────────────── */
+  mk(new THREE.CylinderGeometry(.45,.45,L,8),
+    new THREE.MeshBasicMaterial({color:0x3b82f6,transparent:true,opacity:.38}), 0,L/2,0);
+
+  /* ── 시야각 프러스텀 ──────────────────────────────────────── */
   const apex=new THREE.Vector3(0,L-5,0);
-  const c=[ new THREE.Vector3(-fw/2,0,-fh/2),new THREE.Vector3(fw/2,0,-fh/2),
-            new THREE.Vector3(fw/2,0,fh/2), new THREE.Vector3(-fw/2,0,fh/2) ];
-  const fg=new THREE.BufferGeometry();
-  const verts=[];
-  c.forEach((p,i)=>{ const n=c[(i+1)%4]; verts.push(apex.x,apex.y,apex.z, p.x,p.y,p.z, n.x,n.y,n.z); });
-  fg.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  const corners=[
+    new THREE.Vector3(-fw/2,0,-fh/2), new THREE.Vector3(fw/2,0,-fh/2),
+    new THREE.Vector3(fw/2,0, fh/2),  new THREE.Vector3(-fw/2,0, fh/2)
+  ];
+  const fg=new THREE.BufferGeometry(); const fv=[];
+  corners.forEach((p,i)=>{ const n=corners[(i+1)%4]; fv.push(apex.x,apex.y,apex.z,p.x,p.y,p.z,n.x,n.y,n.z); });
+  fg.setAttribute('position',new THREE.Float32BufferAttribute(fv,3));
   fg.computeVertexNormals();
-  group.add(new THREE.Mesh(fg,new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:.14,side:THREE.DoubleSide})));
-  // frustum edges
+  group.add(new THREE.Mesh(fg,new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:.11,side:THREE.DoubleSide})));
   const eg=new THREE.BufferGeometry(); const ev=[];
-  c.forEach(p=>ev.push(apex.x,apex.y,apex.z,p.x,p.y,p.z));
-  c.forEach((p,i)=>{const n=c[(i+1)%4]; ev.push(p.x,p.y,p.z,n.x,n.y,n.z);});
+  corners.forEach(p=>ev.push(apex.x,apex.y,apex.z,p.x,p.y,p.z));
+  corners.forEach((p,i)=>{ const n=corners[(i+1)%4]; ev.push(p.x,p.y,p.z,n.x,n.y,n.z); });
   eg.setAttribute('position',new THREE.Float32BufferAttribute(ev,3));
-  group.add(new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:0x22d3ee,transparent:true,opacity:.6})));
-  // object plane (inspection target)
+  group.add(new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:0x22d3ee,transparent:true,opacity:.7})));
+
+  /* ── 물체면 ───────────────────────────────────────────────── */
   const plate=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(fw,4),Math.max(fh,4)),
-    new THREE.MeshStandardMaterial({color:0x9aa4b0,roughness:.9,side:THREE.DoubleSide}));
+    new THREE.MeshStandardMaterial({color:0x9aa4b0,roughness:.88,side:THREE.DoubleSide}));
   plate.rotation.x=-Math.PI/2; plate.position.y=-.1; group.add(plate);
-  // labels
-  labels.push(Object.assign(makeLabel(`WD ${fmt(r.wd)} mm`),{pos:new THREE.Vector3(14,L/2,0)}));
-  labels.push(Object.assign(makeLabel(`FOV ${fmt(r.fovW)} × ${fmt(r.fovH)} mm`),{pos:new THREE.Vector3(0,2,fh/2+6)}));
+
+  /* ── 라벨 ─────────────────────────────────────────────────── */
+  labels.push(Object.assign(makeLabel(`WD ${fmt(r.wd)} mm`),{pos:new THREE.Vector3(22,L/2,0)}));
+  labels.push(Object.assign(makeLabel(`FOV ${fmt(r.fovW)} × ${fmt(r.fovH)} mm`),{pos:new THREE.Vector3(0,2,fh/2+8)}));
   if(!isNaN(r.pixRes)) labels.push(Object.assign(makeLabel(`${fmt(r.pixRes)} μm/px`),{pos:new THREE.Vector3(-fw/2-4,1,0)}));
 }
 function animate(){
@@ -615,10 +665,10 @@ function animate(){
 window.setCamView=(mode)=>{
   if(!camera3)return;
   const d=320;
-  if(mode==='front') camera3.position.set(0,120,d);
+  if(mode==='front') camera3.position.set(0,140,d);
   else if(mode==='top') camera3.position.set(0,d,0.1);
-  else camera3.position.set(180,140,260);
-  controls.target.set(0,40,0); controls.update();
+  else camera3.position.set(200,160,280);
+  controls.target.set(0,60,0); controls.update();
 };
 
 /* ============ views ============ */
