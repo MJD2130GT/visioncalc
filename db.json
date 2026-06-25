@@ -933,7 +933,7 @@
       "magnification": 0.1,
       "mount_type": "C-mount",
       "min_wd_mm": 100,
-      "max_wd_mm": 10000,
+      "max_wd_mm": 9999,
       "sensor_format": "2/3\""
     },
     {
@@ -1611,8 +1611,8 @@
       "focal_length_mm": 0,
       "magnification": 0.25,
       "mount_type": "C-mount",
-      "min_wd_mm": 999,
-      "max_wd_mm": 999,
+      "min_wd_mm": 139,
+      "max_wd_mm": 139,
       "sensor_format": "1.1\"",
       "lens_type": "fixed_focal",
       "na": 0.011
@@ -1624,8 +1624,8 @@
       "focal_length_mm": 0,
       "magnification": 0.5,
       "mount_type": "C-mount",
-      "min_wd_mm": 999,
-      "max_wd_mm": 999,
+      "min_wd_mm": 132,
+      "max_wd_mm": 132,
       "sensor_format": "1.1\"",
       "lens_type": "fixed_focal",
       "na": 0.021
@@ -1637,8 +1637,8 @@
       "focal_length_mm": 0,
       "magnification": 1.0,
       "mount_type": "C-mount",
-      "min_wd_mm": 999,
-      "max_wd_mm": 999,
+      "min_wd_mm": 110,
+      "max_wd_mm": 110,
       "sensor_format": "1.1\"",
       "lens_type": "fixed_focal",
       "na": 0.04
@@ -1650,8 +1650,8 @@
       "focal_length_mm": 0,
       "magnification": 2.0,
       "mount_type": "C-mount",
-      "min_wd_mm": 999,
-      "max_wd_mm": 999,
+      "min_wd_mm": 71,
+      "max_wd_mm": 71,
       "sensor_format": "1.1\"",
       "lens_type": "fixed_focal",
       "na": 0.075
@@ -1909,8 +1909,8 @@
       "focal_length_mm": 0,
       "magnification": 0.3,
       "mount_type": "C-mount",
-      "min_wd_mm": 999,
-      "max_wd_mm": 999,
+      "min_wd_mm": 221.5,
+      "max_wd_mm": 221.5,
       "sensor_format": "1.1\"",
       "lens_type": "telecentric_variable",
       "na": 0.014
@@ -1922,8 +1922,8 @@
       "focal_length_mm": 0,
       "magnification": 0.5,
       "mount_type": "C-mount",
-      "min_wd_mm": 999,
-      "max_wd_mm": 999,
+      "min_wd_mm": 125.8,
+      "max_wd_mm": 125.8,
       "sensor_format": "1.1\"",
       "lens_type": "telecentric_variable",
       "na": 0.021
@@ -1935,8 +1935,8 @@
       "focal_length_mm": 0,
       "magnification": 0.75,
       "mount_type": "C-mount",
-      "min_wd_mm": 999,
-      "max_wd_mm": 999,
+      "min_wd_mm": 133.9,
+      "max_wd_mm": 133.9,
       "sensor_format": "1.1\"",
       "lens_type": "telecentric_variable",
       "na": 0.03
