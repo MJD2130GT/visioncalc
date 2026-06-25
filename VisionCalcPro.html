@@ -483,9 +483,13 @@ function checkCompat(r){
   const rc=fmtRank(c.sensor_format), rl=fmtRank(l.sensor_format);
   if(rc!=null && rl!=null && rl<rc)
     warns.push(`센서 포맷 미달: 렌즈 <b>${esc(l.sensor_format)}</b> < 카메라 <b>${esc(c.sensor_format)}</b> → 비네팅 우려`);
-  // 3) WD within lens range (±0.5 mm tolerance to avoid false warnings from rounding)
-  const WD_TOL=0.5;
-  if(!isNaN(r.wd)){
+  // 3) WD range: lensStillMatches=true 이면 r.wd는 렌즈 자체 f·mag 에서 파생된 값이므로
+  //    DB의 min_wd(반올림 저장)와 비교하면 오탐이 생김 → 사용자가 f·mag을 바꿨을 때만 체크
+  const naturalWD = (l.focal_length_mm && l.magnification)
+    ? l.focal_length_mm * (1 + 1 / l.magnification) : null;
+  const wdOverridden = naturalWD != null && Math.abs(r.wd - naturalWD) > 3;
+  if(wdOverridden && !isNaN(r.wd)){
+    const WD_TOL=0.5;
     if(l.min_wd_mm && r.wd<l.min_wd_mm-WD_TOL) warns.push(`WD ${fmt(r.wd)}mm < 렌즈 최소 WD <b>${l.min_wd_mm}mm</b>`);
     if(l.max_wd_mm && r.wd>l.max_wd_mm+WD_TOL) warns.push(`WD ${fmt(r.wd)}mm > 렌즈 최대 WD <b>${l.max_wd_mm}mm</b>`);
   }
@@ -495,7 +499,7 @@ function checkCompat(r){
       <ul>${warns.map(w=>`<li>${w}</li>`).join('')}</ul></div>`;
   } else {
     box.innerHTML=`<div class="compat-box ok">
-      <span class="ttl">✓ 호환성 정상</span>${esc(c.model_name)} + ${esc(l.model_name)} (마운트·센서포맷·WD 적합)</div>`;
+      <span class="ttl">✓ 호환성 정상</span>${esc(c.model_name)} + ${esc(l.model_name)} (마운트·센서포맷 적합)</div>`;
   }
 }
 function toggleErr(id,on){ document.getElementById(id).classList.toggle('err',on); }
