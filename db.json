@@ -1,5 +1,5 @@
 {
-  "updated": "2026-06-15",
+  "updated": "2026-06-26",
   "_schema_note": {
     "cameras": "id / manufacturer / model_name / width_px / height_px / pixel_size_um / sensor_type / color_mono / interface / frame_rate_fps / mount / sensor_format",
     "lenses": "id / manufacturer / model_name / focal_length_mm / magnification(at min WD) / mount_type / min_wd_mm / max_wd_mm / sensor_format"
