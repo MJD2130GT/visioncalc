@@ -75,8 +75,9 @@
   .modal-bg.show{display:flex}
   .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;width:560px;max-width:92vw;max-height:86vh;overflow:auto}
   .modal.wide{width:820px}
-  .modal.wide table{width:100%;white-space:nowrap}
-  .modal.wide table td,.modal.wide table th{padding:6px 10px}
+  .modal.wide table{width:100%;table-layout:auto}
+  .modal.wide table td,.modal.wide table th{padding:6px 10px;white-space:nowrap}
+  .modal.wide table .mini{white-space:nowrap;min-width:46px}
   .modal h2{margin:0 0 16px;font-size:18px}
   .modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
   .modal-grid .full{grid-column:1/3}
