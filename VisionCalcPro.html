@@ -800,8 +800,9 @@ function update3D(r){
   applyXray(xrayOn);
 
   /* ── 광축 빔 ──────────────────────────────────────────────── */
+  // 반투명 객체는 renderOrder 고정(FOV 면 1 → 대상체 2 → 광축 3): 시점에 따른 정렬 순서 뒤바뀜으로 인한 깜박임 방지
   mk(new THREE.CylinderGeometry(.45,.45,L,8),
-    new THREE.MeshBasicMaterial({color:0x3b82f6,transparent:true,opacity:.38}), 0,L/2,0);
+    new THREE.MeshBasicMaterial({color:0x3b82f6,transparent:true,opacity:.38,depthWrite:false}), 0,L/2,0).renderOrder=3;
 
   /* ── FOV 시각화 ───────────────────────────────────────────── */
   // 반투명 면은 depthWrite:false — 같은 위치의 테두리 선과 깊이 경합 방지
@@ -826,7 +827,7 @@ function update3D(r){
 
     // 측면 반투명 패널 4장
     const addPlane=(w,h,x,y,z,ry=0)=>{
-      const p=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mFovFill);
+      const p=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mFovFill); p.renderOrder=1;
       p.position.set(x,y,z); p.rotation.y=ry; group.add(p);
     };
     addPlane(fw,glassY, 0,glassY/2,-fh/2, 0);
@@ -843,7 +844,8 @@ function update3D(r){
     co.forEach((p,i)=>{ const n=co[(i+1)%4]; fv.push(apex.x,apex.y,apex.z,p.x,p.y,p.z,n.x,n.y,n.z); });
     fg.setAttribute('position',new THREE.Float32BufferAttribute(fv,3));
     fg.computeVertexNormals();
-    group.add(new THREE.Mesh(fg,new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:.11,side:THREE.DoubleSide,depthWrite:false})));
+    const frus=new THREE.Mesh(fg,new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:.11,side:THREE.DoubleSide,depthWrite:false}));
+    frus.renderOrder=1; group.add(frus);
     const eg=new THREE.BufferGeometry(); const ev=[];
     co.forEach(p=>ev.push(apex.x,apex.y,apex.z,p.x,p.y,p.z));
     co.forEach((p,i)=>{ const n=co[(i+1)%4]; ev.push(p.x,p.y,p.z,n.x,n.y,n.z); });
@@ -869,7 +871,7 @@ function update3D(r){
     // +Y 위치는 Top 뷰에서 위쪽으로 보이도록 -z 방향에 배치
     box.position.set((+o.x||0)*s, bh/2, -(+o.y||0)*s);
     box.rotation.y=(+o.rot||0)*Math.PI/180;
-    group.add(box);
+    box.renderOrder=2; group.add(box);
     const edges=new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:col}));
     edges.position.copy(box.position); edges.rotation.copy(box.rotation); group.add(edges);
     // 일반 렌즈: 윗면 높이에서의 FOV 단면
@@ -1103,7 +1105,7 @@ const VERSION_HISTORY=[
     'Top 시점에서 카메라·렌즈 반투명 처리',
     '3D 카메라·렌즈를 실제 치수 비율로 렌더링 (텔레센트릭 구경·전장은 FOV 기준), 초기/Reset 시점 자동 맞춤',
     '대상체 패널 표시 시 우측 메뉴 잘림 수정',
-    '3D 뷰 격자·FOV 선 깜박임(z-fighting) 수정',
+    '3D 뷰 격자·FOV 선 깜박임(z-fighting) 및 광축 수직선 깜박임 수정',
     '로그인 화면 업데이트 날짜 표시, 버전별 업데이트 내역 추가']},
   {ver:'v1.2', date:'2026.06.25', items:[
     '로그인 화면 버전 표시',
