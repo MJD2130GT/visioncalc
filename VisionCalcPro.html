@@ -445,6 +445,7 @@ window.setCalcMode=function(mode){
   }
   document.getElementById('compat').innerHTML='';
   recalc();
+  setCamView('reset');   // 렌즈 종류에 따라 전체 높이가 달라지므로 시점 재조정
 };
 
 function recalc(){
@@ -639,8 +640,13 @@ window.recalc=recalc;
 
 /* ============ THREE.js viewer ============ */
 let renderer,scene,camera3,controls,group,labelLayer;
-// 초기 시점 (Reset 시 복귀)
-const HOME_VIEW={pos:new THREE.Vector3(200,160,280), target:new THREE.Vector3(0,60,0)};
+// 초기 시점 (Reset 시 복귀) — 카메라·렌즈 전체 높이(sceneH)가 화면에 들어오도록 산출
+let sceneH=180;
+const HOME_DIR=new THREE.Vector3(200,100,280).normalize();
+function homeView(){
+  const target=new THREE.Vector3(0,sceneH/2,0);
+  return {target, pos:target.clone().add(HOME_DIR.clone().multiplyScalar(Math.max(358,sceneH*2)))};
+}
 function init3D(){
   const vp=document.getElementById('viewport');
   const W=vp.clientWidth, H=vp.clientHeight;
@@ -649,9 +655,7 @@ function init3D(){
   vp.appendChild(renderer.domElement);
   scene=new THREE.Scene(); scene.background=new THREE.Color(0xdfe5ec);
   camera3=new THREE.PerspectiveCamera(45,W/H,0.1,5000);
-  camera3.position.copy(HOME_VIEW.pos);
   controls=new OrbitControls(camera3,renderer.domElement);
-  controls.target.copy(HOME_VIEW.target);
   controls.enableDamping=true;
   scene.add(new THREE.HemisphereLight(0xffffff,0x1a2535,1.0));
   const dl=new THREE.DirectionalLight(0xffffff,1.4); dl.position.set(120,200,160); scene.add(dl);
@@ -707,85 +711,88 @@ function update3D(r){
     const o=new THREE.Mesh(g,m); o.position.set(x,y,z); o.rotation.x=rx; o.rotation.y=ry; group.add(o); return o;
   };
 
-  const glassY=L-5.5;
-  let lensTopY;
+  // 카메라·렌즈는 실제 치수(mm)로 모델링 후 WD와 같은 비율(s)로 축소
+  // hw 그룹 원점 = 렌즈 전면 유리, +y = 카메라 방향
+  const glassY=L;
+  const hw=new THREE.Group(); hw.position.y=glassY; hw.scale.setScalar(s); group.add(hw);
+  const mh=(g,m,x,y,z,rx=0)=>{ const o=new THREE.Mesh(g,m); o.position.set(x,y,z); o.rotation.x=rx; hw.add(o); return o; };
+  const C_R=12.7;   // C-마운트 나사부 반지름 (1" = 25.4mm)
+  let lensTop;
 
   if(isTc){
     /* ═══ 텔레센트릭 렌즈 ══════════════════════════════════ */
-    // 전면 구경 반지름: FOV에 비례 (TC 렌즈의 핵심 — 대구경 전면 원소)
-    const tcR=Math.min(Math.max(fw*0.55+10, 18), 52);
+    // 전면 구경은 FOV 대각보다 커야 함 · 전장은 구경에 비례 (0.1×급 ≈ Ø130×300mm, 1×급 ≈ Ø25×90mm)
+    const tcR=Math.max(Math.hypot(fovW,fovH)*1.1+8, 25)/2;
+    const tcLen=Math.min(Math.max(tcR*4+40, 80), 420);
+    const ringH=Math.max(tcLen*.04,3), taperH=tcLen*.14, adH=3, mtH=5;
+    const bH=tcLen-ringH-taperH-adH-mtH;
 
     // 대형 전면 유리 원소 (AR 코팅, 진한 파랑)
-    mk(new THREE.CircleGeometry(tcR-1,56), mGlass, 0,glassY,0, Math.PI/2);
-    mk(new THREE.CircleGeometry((tcR-1)*.38,24), mGlint,
-       -(tcR-1)*.18, glassY+.15, (tcR-1)*.18, Math.PI/2);
-
+    mh(new THREE.CircleGeometry(tcR*.93,56), mGlass, 0,-.05,0, Math.PI/2);
+    mh(new THREE.CircleGeometry(tcR*.35,24), mGlint, -tcR*.17,.1,tcR*.17, Math.PI/2);
     // 전면 하우징 링 (크롬)
-    mk(new THREE.CylinderGeometry(tcR,tcR,5,44), mMount, 0,glassY+2.5,0);
-
+    mh(new THREE.CylinderGeometry(tcR,tcR,ringH,48), mMount, 0,ringH/2,0);
     // 긴 메인 배럴 (TC 렌즈 특유의 균일한 대형 원통)
-    const bH=46;
-    mk(new THREE.CylinderGeometry(tcR-2,tcR-2,bH,44), mBarrel, 0,glassY+5+bH/2,0);
-
+    let y=ringH;
+    mh(new THREE.CylinderGeometry(tcR*.95,tcR*.95,bH,48), mBarrel, 0,y+bH/2,0); y+=bH;
     // 후방 테이퍼 (C-마운트 어댑터 쪽으로 좁아짐)
-    mk(new THREE.CylinderGeometry(12,tcR-2,8,44), mBarrel, 0,glassY+5+bH+4,0);
-    // 어댑터 크롬 링
-    mk(new THREE.CylinderGeometry(12.5,12.5,3,44), mMount, 0,glassY+5+bH+9.5,0);
-    // C-마운트 수나사 배럴
-    mk(new THREE.CylinderGeometry(11.2,12,5,44), mBarrel, 0,glassY+5+bH+13.5,0);
-
-    lensTopY=glassY+5+bH+16;
+    mh(new THREE.CylinderGeometry(C_R+1.5,tcR*.95,taperH,48), mBarrel, 0,y+taperH/2,0); y+=taperH;
+    // 어댑터 크롬 링 + C-마운트 나사 배럴
+    mh(new THREE.CylinderGeometry(C_R+2,C_R+2,adH,44), mMount, 0,y+adH/2,0); y+=adH;
+    mh(new THREE.CylinderGeometry(C_R,C_R+.5,mtH,44), mBarrel, 0,y+mtH/2,0); y+=mtH;
+    lensTop=y;
 
   } else {
-    /* ═══ 일반 렌즈 ════════════════════════════════════════ */
+    /* ═══ 일반 렌즈 (C-마운트 FA 렌즈, Ø30mm) ══════════════ */
+    // 전장은 초점거리에 비례 (f16 ≈ 32mm, f50 ≈ 52mm)
+    const R=15, fl=r.f>0?r.f:16;
+    const len=Math.min(Math.max(22+fl*.6, 26), 90);
+    const frontH=3, focusH=len*.28, apH=2.5, mtH=4;
+    const barH=len-frontH-focusH-apH-mtH;
+
     // 전면 유리 원소 (AR 코팅)
-    mk(new THREE.CircleGeometry(11,56), mGlass, 0,glassY,0, Math.PI/2);
-    mk(new THREE.CircleGeometry(4.5,24), mGlint, -2.5,glassY+.15,2.5, Math.PI/2);
-
+    mh(new THREE.CircleGeometry(R-3,56), mGlass, 0,-.05,0, Math.PI/2);
+    mh(new THREE.CircleGeometry((R-3)*.4,24), mGlint, -2,.1,2, Math.PI/2);
     // 전면 하우징 링 (크롬)
-    mk(new THREE.CylinderGeometry(12.5,12.5,4,44), mMount, 0,L-3,0);
-
+    let y=0;
+    mh(new THREE.CylinderGeometry(R-1.5,R-1.5,frontH,44), mMount, 0,y+frontH/2,0); y+=frontH;
     // 포커스 링 + 눈금 밴드
-    mk(new THREE.CylinderGeometry(15.8,15.8,9,44), mFocus, 0,L+3.5,0);
-    mk(new THREE.CylinderGeometry(16.1,16.1,2,44,1,true),
-      new THREE.MeshStandardMaterial({color:0xd1d5db,metalness:.2,roughness:.8}), 0,L+3,0);
-
+    mh(new THREE.CylinderGeometry(R,R,focusH,44), mFocus, 0,y+focusH/2,0);
+    mh(new THREE.CylinderGeometry(R+.2,R+.2,1.5,44,1,true),
+      new THREE.MeshStandardMaterial({color:0xd1d5db,metalness:.2,roughness:.8}), 0,y+focusH*.35,0);
+    y+=focusH;
     // 메인 배럴 (테이퍼)
-    mk(new THREE.CylinderGeometry(13,14.2,13,44), mBarrel, 0,L+13,0);
-
+    mh(new THREE.CylinderGeometry(R-2,R-1,barH,44), mBarrel, 0,y+barH/2,0); y+=barH;
     // 조리개 링 (크롬 악센트)
-    mk(new THREE.CylinderGeometry(13.5,13.5,3,44), mMount, 0,L+20.5,0);
-
+    mh(new THREE.CylinderGeometry(R-1.5,R-1.5,apH,44), mMount, 0,y+apH/2,0); y+=apH;
     // 후방 C-마운트 배럴
-    mk(new THREE.CylinderGeometry(11.2,13,5,44), mBarrel, 0,L+24.5,0);
-
-    lensTopY=L+27;
+    mh(new THREE.CylinderGeometry(C_R,R-2.5,mtH,44), mBarrel, 0,y+mtH/2,0); y+=mtH;
+    lensTop=y;
   }
 
-  /* ── 카메라 바디 (공통) ──────────────────────────────────── */
-  const cb=lensTopY;
+  /* ── 카메라 바디 (공통 · 29×29×42mm 큐브형 머신비전 카메라) ─ */
+  const cb=lensTop, BW=29, BL=38;
 
   // C-마운트 수용 링
-  mk(new THREE.CylinderGeometry(13,13,4,44), mMount, 0,cb+2,0);
-
+  mh(new THREE.CylinderGeometry(C_R+1,C_R+1,3,44), mMount, 0,cb+1.5,0);
   // 메인 하우징 박스 (정사각형 단면)
-  const hcy=cb+22;
-  mk(new THREE.BoxGeometry(28,36,28), mBody, 0,hcy,0);
+  const hcy=cb+3+BL/2;
+  mh(new THREE.BoxGeometry(BW,BL,BW), mBody, 0,hcy,0);
   // 측면 방열 리브
-  mk(new THREE.BoxGeometry(1,30,26), mBodyDk, -13.9,hcy,0);
-  mk(new THREE.BoxGeometry(1,30,26), mBodyDk,  13.9,hcy,0);
-
+  mh(new THREE.BoxGeometry(.8,BL-6,BW-3), mBodyDk, -BW/2-.4,hcy,0);
+  mh(new THREE.BoxGeometry(.8,BL-6,BW-3), mBodyDk,  BW/2+.4,hcy,0);
   // 후면 I/O 패널
-  mk(new THREE.BoxGeometry(28,3,28), mBodyDk, 0,cb+41.5,0);
+  const top=cb+3+BL;
+  mh(new THREE.BoxGeometry(BW,2,BW), mBodyDk, 0,top+1,0);
   // GigE / USB3 커넥터
-  mk(new THREE.BoxGeometry(11,5.5,7.5), mConn, 0,cb+45,1);
-  mk(new THREE.BoxGeometry(5,4.5,5),    mConn, 8,cb+45,-5);
-
+  mh(new THREE.BoxGeometry(11,5,7.5), mConn, 0,top+4.5,1);
+  mh(new THREE.BoxGeometry(5,4,5),    mConn, 8,top+4,-5);
   // 상태 LED
-  mk(new THREE.SphereGeometry(1.8,10,10), mLED, 14.6,cb+34,5);
+  mh(new THREE.SphereGeometry(1.5,10,10), mLED, BW/2+.6,hcy+BL*.3,5);
+  sceneH=glassY+(top+9)*s;
 
   // 카메라·렌즈 재질 수집 (상면 시점에서 반투명 처리용)
-  hwMats=[...new Set(group.children.map(o=>o.material))];
+  hwMats=[...new Set(hw.children.map(o=>o.material))];
   hwMats.forEach(m=>{ m.userData.t0=m.transparent; m.userData.o0=m.opacity; });
   applyXray(xrayOn);
 
@@ -910,7 +917,7 @@ const VIEW_DIR={persp:[1,1,1], front:[0,.25,1], top:[0,1,.0003]};
 window.setCamView=(mode)=>{
   if(!camera3)return;
   if(mode==='reset'){
-    camera3.position.copy(HOME_VIEW.pos); controls.target.copy(HOME_VIEW.target);
+    const h=homeView(); camera3.position.copy(h.pos); controls.target.copy(h.target);
   } else {
     const dist=camera3.position.distanceTo(controls.target);
     camera3.position.copy(controls.target)
@@ -1089,6 +1096,7 @@ const VERSION_HISTORY=[
     '프로젝트 저장/불러오기·CSV 내보내기에 대상체 반영',
     '3D 뷰 버튼 정리 — 3D/Front/Top은 현재 줌 유지, Reset은 초기 시점 복귀',
     'Top 시점에서 카메라·렌즈 반투명 처리',
+    '3D 카메라·렌즈를 실제 치수 비율로 렌더링 (텔레센트릭 구경·전장은 FOV 기준), 초기/Reset 시점 자동 맞춤',
     '대상체 패널 표시 시 우측 메뉴 잘림 수정',
     '로그인 화면 업데이트 날짜 표시, 버전별 업데이트 내역 추가']},
   {ver:'v1.2', date:'2026.06.25', items:[
@@ -1143,7 +1151,7 @@ window.toast=toast;
 ['cam_overlay','cam_del','lens_overlay','lens_del'].forEach(k=>localStorage.removeItem('vcp_'+k));
 setVal('in_w',2448);setVal('in_h',2048);setVal('in_px',3.45);
 setVal('in_mag',0.1);setVal('in_f',16);setVal('in_nyq',2);setVal('in_dp',2);
-renderObjects(); init3D(); recalc();
+renderObjects(); init3D(); recalc(); setCamView('reset');
 loadTeamDB().then(()=>{
   const el=document.getElementById('dbSource'); if(el) el.textContent='DB: '+dbSource;
 });
