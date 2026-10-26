@@ -654,13 +654,16 @@ function init3D(){
   renderer.setSize(W,H); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
   vp.appendChild(renderer.domElement);
   scene=new THREE.Scene(); scene.background=new THREE.Color(0xdfe5ec);
-  camera3=new THREE.PerspectiveCamera(45,W/H,0.1,5000);
+  // near=1: 장면 단위가 수백 수준이므로 0.1이면 깊이 정밀도가 부족해 동일 평면 선이 깜박임
+  camera3=new THREE.PerspectiveCamera(45,W/H,1,5000);
   controls=new OrbitControls(camera3,renderer.domElement);
   controls.enableDamping=true;
   scene.add(new THREE.HemisphereLight(0xffffff,0x1a2535,1.0));
   const dl=new THREE.DirectionalLight(0xffffff,1.4); dl.position.set(120,200,160); scene.add(dl);
   const dl2=new THREE.DirectionalLight(0xd0e8ff,0.4); dl2.position.set(-80,60,-120); scene.add(dl2);
-  const grid=new THREE.GridHelper(800,40,0x9aa6b4,0xc2cad4); scene.add(grid);
+  // 바닥 격자는 깊이 기록 없이 먼저 그려 y=0의 FOV 테두리·축·물체와 겹쳐도 깜박이지 않게 함
+  const grid=new THREE.GridHelper(800,40,0x9aa6b4,0xc2cad4);
+  grid.material.depthWrite=false; grid.renderOrder=-1; scene.add(grid);
   scene.add(new THREE.AxesHelper(60));
   group=new THREE.Group(); scene.add(group);
   labelLayer=document.createElement('div');
@@ -801,7 +804,8 @@ function update3D(r){
     new THREE.MeshBasicMaterial({color:0x3b82f6,transparent:true,opacity:.38}), 0,L/2,0);
 
   /* ── FOV 시각화 ───────────────────────────────────────────── */
-  const mFovFill=new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:.09,side:THREE.DoubleSide});
+  // 반투명 면은 depthWrite:false — 같은 위치의 테두리 선과 깊이 경합 방지
+  const mFovFill=new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:.09,side:THREE.DoubleSide,depthWrite:false});
   const mFovLine=new THREE.LineBasicMaterial({color:0x22d3ee,transparent:true,opacity:.7});
 
   if(isTc){
@@ -839,7 +843,7 @@ function update3D(r){
     co.forEach((p,i)=>{ const n=co[(i+1)%4]; fv.push(apex.x,apex.y,apex.z,p.x,p.y,p.z,n.x,n.y,n.z); });
     fg.setAttribute('position',new THREE.Float32BufferAttribute(fv,3));
     fg.computeVertexNormals();
-    group.add(new THREE.Mesh(fg,new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:.11,side:THREE.DoubleSide})));
+    group.add(new THREE.Mesh(fg,new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:.11,side:THREE.DoubleSide,depthWrite:false})));
     const eg=new THREE.BufferGeometry(); const ev=[];
     co.forEach(p=>ev.push(apex.x,apex.y,apex.z,p.x,p.y,p.z));
     co.forEach((p,i)=>{ const n=co[(i+1)%4]; ev.push(p.x,p.y,p.z,n.x,n.y,n.z); });
@@ -849,7 +853,8 @@ function update3D(r){
 
   /* ── 물체면 ───────────────────────────────────────────────── */
   const plate=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(fw,4),Math.max(fh,4)),
-    new THREE.MeshStandardMaterial({color:0x9aa4b0,roughness:.88,side:THREE.DoubleSide}));
+    new THREE.MeshStandardMaterial({color:0x9aa4b0,roughness:.88,side:THREE.DoubleSide,
+      polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1}));   // 위에 놓인 선·물체보다 항상 뒤로
   plate.rotation.x=-Math.PI/2; plate.position.y=-.1; group.add(plate);
 
   /* ── 검사 대상체 ──────────────────────────────────────────── */
@@ -1098,6 +1103,7 @@ const VERSION_HISTORY=[
     'Top 시점에서 카메라·렌즈 반투명 처리',
     '3D 카메라·렌즈를 실제 치수 비율로 렌더링 (텔레센트릭 구경·전장은 FOV 기준), 초기/Reset 시점 자동 맞춤',
     '대상체 패널 표시 시 우측 메뉴 잘림 수정',
+    '3D 뷰 격자·FOV 선 깜박임(z-fighting) 수정',
     '로그인 화면 업데이트 날짜 표시, 버전별 업데이트 내역 추가']},
   {ver:'v1.2', date:'2026.06.25', items:[
     '로그인 화면 버전 표시',
