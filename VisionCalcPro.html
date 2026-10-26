@@ -34,7 +34,27 @@
   .view{height:100%;display:none}
   .view.active{display:block}
   /* calc view */
-  #calc.active{display:grid;grid-template-columns:1fr 420px}
+  #calc.active{display:grid;grid-template-columns:300px 1fr 420px}
+  #calc.active.noobj{grid-template-columns:1fr 420px}
+  #calc.noobj .objpanel{display:none}
+  /* 검사 대상체 패널 */
+  .objpanel{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:16px}
+  .ohint{font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px}
+  .osum{font-size:12px;font-weight:600;padding:6px 9px;border-radius:7px;margin-bottom:10px}
+  .osum.ok{background:#eafaf0;border:1px solid #b6e6c6;color:#15803d}
+  .osum.ng{background:var(--err-bg);border:1px solid #f5c2c2;color:var(--bad)}
+  .objcard{border:1px solid var(--line);border-left:4px solid var(--line);border-radius:var(--radius);padding:10px;margin-bottom:10px;background:var(--panel2)}
+  .objcard.ok{border-left-color:var(--good)}
+  .objcard.ng{border-left-color:var(--bad)}
+  .objcard .ohead{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+  .objcard .ohead input{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);color:var(--text);padding:5px 8px;border-radius:6px;font-size:13px;font-weight:600}
+  .ogrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 8px}
+  .ogrid label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
+  .ogrid input{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--text);padding:5px 6px;border-radius:6px;text-align:right;font-size:12px}
+  .objcard input:focus{outline:none;border-color:var(--accent)}
+  .ostat{font-size:12px;margin-top:8px;line-height:1.55}
+  .ostat.ok{color:var(--good)} .ostat.ng{color:var(--bad)} .ostat.na{color:var(--muted)}
+  .ostat .note{color:var(--warn);display:block}
   #viewport{position:relative;background:#dfe5ec}
   #viewport canvas{display:block}
   .vp-controls{position:absolute;top:12px;left:12px;display:flex;gap:6px}
@@ -184,8 +204,18 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
 <main>
   <!-- ===== CALC + 3D ===== -->
   <section id="calc" class="view active">
+    <aside class="objpanel">
+      <div class="group">
+        <h3>검사 대상체 <button class="mini pick" onclick="addObject()">＋ 물체 추가</button></h3>
+        <div class="ohint">가로(X)·세로(Y)·높이(Z)를 입력하면 3D 뷰에 물체가 표시되고 FOV 포함 여부를 검토합니다.
+          일반 렌즈는 물체 윗면이 렌즈에 가까워 FOV가 좁아지므로 <b>윗면 기준</b>으로 판정합니다.</div>
+        <div id="objSummary"></div>
+        <div id="objList"></div>
+      </div>
+    </aside>
     <div id="viewport">
       <div class="vp-controls">
+        <button class="btn" onclick="toggleObjPanel()" title="검사 대상체 패널 열기/닫기">◧ 대상체</button>
         <button class="btn" onclick="setCamView('persp')">3D</button>
         <button class="btn" onclick="setCamView('front')">Front</button>
         <button class="btn" onclick="setCamView('top')">Top</button>
@@ -446,8 +476,88 @@ function recalc(){
     const lensMatch=selectedLens&&selectedLens.lens_type&&approx(r.mag,selectedLens.magnification)&&approx(+v('in_na'),selectedLens.na);
     if(lens){ lens.className='modeltag db'; lens.textContent=lensMatch?'🔭 '+(selectedLens.manufacturer?selectedLens.manufacturer+' ':'')+selectedLens.model_name:'🔭 텔레센트릭 렌즈'; }
   }
-  update3D(isTc?{...r,wd:isNaN(tcWd)?r.wd:tcWd,isTc:true}:r);
+  const r3=isTc?{...r,wd:isNaN(tcWd)?r.wd:tcWd,isTc:true,dof}:r;
+  updateObjStatus(r3);
+  update3D(r3);
 }
+
+/* ============ 검사 대상체 (FOV 포함 검토) ============ */
+let objects=DB.load('objects',[]);
+const saveObjects=()=>DB.save('objects',objects);
+// 물체 1개를 현재 광학 조건(r)에 대해 판정
+function evalObject(o,r){
+  const W=+o.w||0, D=+o.d||0, H=Math.max(+o.h||0,0);
+  if(!(W>0&&D>0)) return {state:'na',msg:'가로·세로를 입력하세요',notes:[]};
+  if(!(r.fovW>0&&r.fovH>0)) return {state:'na',msg:'FOV 미정 — 카메라·렌즈 값을 확인하세요',notes:[]};
+  const wd=r.wd, notes=[];
+  let k=1;   // 윗면 높이에서의 FOV 축소비 (텔레센트릭은 항상 1)
+  if(H>0){
+    if(wd>0){
+      if(H>=wd) return {state:'ng',msg:`높이 ${fmt(H)}mm ≥ WD ${fmt(wd)}mm — 렌즈와 간섭`,notes:[]};
+      if(!r.isTc) k=(wd-H)/wd;
+    } else if(!r.isTc) notes.push('WD 미정 — 높이에 의한 FOV 축소 미반영');
+    if(r.isTc && r.dof>0 && H*1000>r.dof)
+      notes.push(`높이 ${fmt(H)}mm > 피사계심도 ${fmt(r.dof/1000)}mm — 윗면·바닥 동시 초점 불가`);
+  }
+  // 회전된 바닥면의 축정렬 외접 반폭 (FOV가 축정렬 사각형이므로 꼭짓점 판정과 동일)
+  const a=(+o.rot||0)*Math.PI/180, c=Math.abs(Math.cos(a)), s=Math.abs(Math.sin(a));
+  const ex=W/2*c+D/2*s, ey=W/2*s+D/2*c;
+  const hw=r.fovW/2*k, hh=r.fovH/2*k;
+  const mx=hw-(Math.abs(+o.x||0)+ex), my=hh-(Math.abs(+o.y||0)+ey);
+  const ok=mx>=0&&my>=0;
+  const head=H>0&&k<1?`윗면 FOV ${fmt(hw*2)} × ${fmt(hh*2)} mm`:`FOV ${fmt(hw*2)} × ${fmt(hh*2)} mm`;
+  const msg=ok
+    ? `✓ FOV 내 · 여유 X ${fmt(mx)} / Y ${fmt(my)} mm<br>${head} · 점유 ${fmt(ex/hw*100)}% × ${fmt(ey/hh*100)}%`
+    : `✗ FOV 벗어남 · ${[mx<0?`X ${fmt(-mx)}mm`:'',my<0?`Y ${fmt(-my)}mm`:''].filter(Boolean).join(' / ')} 초과<br>${head}`;
+  return {state:ok?'ok':'ng',msg,notes,k};
+}
+function renderObjects(){
+  const el=document.getElementById('objList');
+  const num=(o,key,lbl,unit,step)=>`<div><label>${lbl} (${unit})</label>
+    <input type="number" step="${step}" value="${o[key]??''}" oninput="updObj('${o.id}','${key}',this.value)"></div>`;
+  el.innerHTML=objects.length? objects.map(o=>`
+    <div class="objcard" id="objc_${o.id}">
+      <div class="ohead">
+        <input value="${escA(o.name)}" oninput="updObj('${o.id}','name',this.value)" placeholder="물체명">
+        <button class="mini del" onclick="delObject('${o.id}')">삭제</button>
+      </div>
+      <div class="ogrid">
+        ${num(o,'w','가로','mm','0.1')}${num(o,'d','세로','mm','0.1')}${num(o,'h','높이','mm','0.1')}
+        ${num(o,'x','X 위치','mm','0.1')}${num(o,'y','Y 위치','mm','0.1')}${num(o,'rot','회전','°','1')}
+      </div>
+      <div class="ostat" id="objs_${o.id}"></div>
+    </div>`).join('') : `<div class="empty" style="padding:24px 8px">등록된 물체가 없습니다.<br>[＋ 물체 추가]를 눌러 검사 대상체를 등록하세요.</div>`;
+}
+function updateObjStatus(r){
+  let nOk=0, nNg=0;
+  objects.forEach(o=>{
+    const e=evalObject(o,r);
+    if(e.state==='ok') nOk++; else if(e.state==='ng') nNg++;
+    const card=document.getElementById('objc_'+o.id), st=document.getElementById('objs_'+o.id);
+    if(!card||!st) return;
+    card.className='objcard '+e.state;
+    st.className='ostat '+e.state;
+    st.innerHTML=e.msg+e.notes.map(n=>`<span class="note">⚠ ${n}</span>`).join('');
+  });
+  const sum=document.getElementById('objSummary');
+  if(!nOk&&!nNg){ sum.className=''; sum.textContent=''; return; }
+  sum.className='osum '+(nNg?'ng':'ok');
+  sum.textContent=nNg? `${nOk+nNg}개 중 ${nNg}개 FOV 벗어남` : `${nOk}개 모두 FOV 내 ✓`;
+}
+window.addObject=()=>{
+  const r=compute();
+  const n=objects.length+1;
+  objects.push({id:uid(),name:'물체 '+n,
+    w:r.fovW>0?round(r.fovW*0.5,1):20, d:r.fovH>0?round(r.fovH*0.5,1):20, h:10, x:0, y:0, rot:0});
+  saveObjects(); renderObjects(); recalc();
+};
+window.updObj=(id,key,val)=>{
+  const o=objects.find(x=>x.id===id); if(!o) return;
+  o[key]= key==='name'? val : (val===''? '' : +val);
+  saveObjects(); recalc();
+};
+window.delObject=(id)=>{ objects=objects.filter(x=>x.id!==id); saveObjects(); renderObjects(); recalc(); };
+window.toggleObjPanel=()=>{ document.getElementById('calc').classList.toggle('noobj'); setTimeout(onResize,30); };
 
 /* ===== 모델명 / 커스텀 표시 ===== */
 let selectedCamera=null, selectedLens=null;
@@ -714,6 +824,33 @@ function update3D(r){
     new THREE.MeshStandardMaterial({color:0x9aa4b0,roughness:.88,side:THREE.DoubleSide}));
   plate.rotation.x=-Math.PI/2; plate.position.y=-.1; group.add(plate);
 
+  /* ── 검사 대상체 ──────────────────────────────────────────── */
+  const OBJ_COLOR={ok:0x16a34a,ng:0xdc2626,na:0x94a3b8};
+  objects.forEach(o=>{
+    const W=+o.w||0, D=+o.d||0, H=Math.max(+o.h||0,0);
+    if(!(W>0&&D>0)) return;
+    const e=evalObject(o,r), col=OBJ_COLOR[e.state];
+    const bh=Math.max(H*s,.2);
+    const geo=new THREE.BoxGeometry(W*s,bh,D*s);
+    const box=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:col,roughness:.6,transparent:true,opacity:.5,depthWrite:false}));
+    // +Y 위치는 Top 뷰에서 위쪽으로 보이도록 -z 방향에 배치
+    box.position.set((+o.x||0)*s, bh/2, -(+o.y||0)*s);
+    box.rotation.y=(+o.rot||0)*Math.PI/180;
+    group.add(box);
+    const edges=new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:col}));
+    edges.position.copy(box.position); edges.rotation.copy(box.rotation); group.add(edges);
+    // 일반 렌즈: 윗면 높이에서의 FOV 단면
+    if(e.k&&e.k<1){
+      const hx=fw/2*e.k, hz=fh/2*e.k, y=H*s;
+      const rg=new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-hx,y,-hz),new THREE.Vector3(hx,y,-hz),new THREE.Vector3(hx,y,hz),
+        new THREE.Vector3(-hx,y,hz),new THREE.Vector3(-hx,y,-hz)]);
+      group.add(new THREE.Line(rg,new THREE.LineBasicMaterial({color:col,transparent:true,opacity:.6})));
+    }
+    labels.push(Object.assign(makeLabel(`${o.name||'물체'} ${fmt(W)}×${fmt(D)}×${fmt(H)}`),
+      {pos:new THREE.Vector3((+o.x||0)*s, bh+5, -(+o.y||0)*s)}));
+  });
+
   /* ── 라벨 ─────────────────────────────────────────────────── */
   labels.push(Object.assign(makeLabel(`WD ${fmt(r.wd)} mm`),{pos:new THREE.Vector3(22,L/2,0)}));
   labels.push(Object.assign(makeLabel(`FOV ${fmt(r.fovW)} × ${fmt(r.fovH)} mm`),{pos:new THREE.Vector3(0,2,fh/2+8)}));
@@ -851,8 +988,9 @@ window.saveProject=()=>{
   const results={fovW:fmt(r.fovW),fovH:fmt(r.fovH),wd:fmt(r.wd),pixRes:fmt(r.pixRes),acc:fmt(r.acc)};
   const name=document.getElementById('projName').value||'무제 프로젝트';
   const existing=projects.find(p=>p.name===name);
-  if(existing){ existing.params=params; existing.results=results; existing.updated=Date.now(); }
-  else projects.push({id:uid(),name,params,results,updated:Date.now()});
+  const objs=JSON.parse(JSON.stringify(objects));
+  if(existing){ existing.params=params; existing.results=results; existing.objects=objs; existing.updated=Date.now(); }
+  else projects.push({id:uid(),name,params,results,objects:objs,updated:Date.now()});
   DB.save('projects',projects); toast('프로젝트 저장됨');
 };
 window.copyProject=()=>{
@@ -865,6 +1003,7 @@ window.loadProject=(id)=>{
   const q=p.params||{};
   ['w','h','px','mag','f','nyq'].forEach(k=>setVal('in_'+k,q[k]??''));
   setVal('in_dp',q.dp??2);
+  if(Array.isArray(p.objects)){ objects=JSON.parse(JSON.stringify(p.objects)); saveObjects(); renderObjects(); }
   showView('calc'); recalc(); toast('불러옴: '+p.name);
 };
 window.delProject=(id)=>{ if(confirm('삭제할까요?')){projects=projects.filter(x=>x.id!==id);DB.save('projects',projects);renderProjects();} };
@@ -884,6 +1023,15 @@ window.exportCSV=()=>{
     ['Working Distance',fmt(r.wd),'mm'],['Lens Angle H',fmt(r.angH),'deg'],['Lens Angle V',fmt(r.angV),'deg'],
     ['Pixel Resolution',fmt(r.pixRes),'um/px'],['Total Accuracy',fmt(r.acc),'um']
   ];
+  if(objects.length){
+    // 화면 표시와 동일한 조건(텔레센트릭 WD 포함)으로 판정
+    const r3=calcMode==='tc'? {...r,wd:+v('in_tcwd')||r.wd,isTc:true} : r;
+    rows.push([],['Object','W(mm)','D(mm)','H(mm)','X(mm)','Y(mm)','Rot(deg)','FOV Check']);
+    objects.forEach(o=>{
+      const e=evalObject(o,r3);
+      rows.push([`"${String(o.name||'').replace(/"/g,'""')}"`,o.w,o.d,o.h,o.x,o.y,o.rot,{ok:'IN',ng:'OUT',na:'N/A'}[e.state]]);
+    });
+  }
   const csv='﻿'+rows.map(r=>r.join(',')).join('\r\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
@@ -911,6 +1059,7 @@ const mv=id=>document.getElementById(id).value.trim();
 const setVal=(id,val)=>{document.getElementById(id).value=val??'';};
 const uid=()=>'p_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const esc=s=>(s==null?'':String(s)).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+const escA=s=>esc(s).replace(/"/g,'&quot;');
 let toastT;
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1800);}
 window.toast=toast;
@@ -919,7 +1068,7 @@ window.toast=toast;
 ['cam_overlay','cam_del','lens_overlay','lens_del'].forEach(k=>localStorage.removeItem('vcp_'+k));
 setVal('in_w',2448);setVal('in_h',2048);setVal('in_px',3.45);
 setVal('in_mag',0.1);setVal('in_f',16);setVal('in_nyq',2);setVal('in_dp',2);
-init3D(); recalc();
+renderObjects(); init3D(); recalc();
 loadTeamDB().then(()=>{
   const el=document.getElementById('dbSource'); if(el) el.textContent='DB: '+dbSource;
 });
