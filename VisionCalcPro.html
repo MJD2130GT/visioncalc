@@ -30,6 +30,15 @@
   nav{display:flex;gap:4px;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
   nav button{background:transparent;border:none;color:var(--muted);padding:7px 14px;border-radius:8px;font-size:14px}
   nav button.active{background:var(--panel2);color:var(--text)}
+  nav .verbtn{font-size:12px;border:1px solid var(--line)}
+  nav .verbtn:hover{border-color:var(--accent);color:var(--accent)}
+  /* 버전 히스토리 */
+  .hist{margin-bottom:16px}
+  .hist h4{margin:0 0 6px;font-size:14px;display:flex;align-items:center;gap:8px}
+  .hist h4 .d{font-size:12px;font-weight:400;color:var(--muted)}
+  .hist h4 .cur{font-size:11px;font-weight:600;color:#fff;background:var(--accent);padding:1px 7px;border-radius:10px}
+  .hist ul{margin:0;padding-left:18px;font-size:13px;line-height:1.7}
+  .hist li .d{color:var(--muted);font-size:11px;margin-left:4px}
   main{height:calc(100% - 112px);overflow:hidden}
   .view{height:100%;display:none}
   .view.active{display:block}
@@ -131,7 +140,7 @@
   .sidepanel:not(.tc) .tc-only{display:none!important}
   /* login gate */
   #gate{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;align-items:center;justify-content:center}
-  #gate .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:34px 30px;width:340px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.08)}
+  #gate .box{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:34px 30px;width:340px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.08)}
   #gate h1{font-size:20px;margin:14px 0 4px}
   #gate p{color:var(--muted);font-size:13px;margin:0 0 20px}
   #gate input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font-size:15px;text-align:center}
@@ -140,6 +149,7 @@
   #gate .err{color:var(--bad);font-size:13px;min-height:16px;margin-top:10px}
   #gate .brand{font-weight:900;font-size:26px;letter-spacing:1px}
   #gate .brand .r{color:#ED1C24}
+  #gate .upd{position:absolute;right:14px;bottom:10px;font-size:11px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -147,11 +157,12 @@
 <div id="gate">
   <div class="box">
     <div class="brand"><span class="r">T</span>OPTEC</div>
-    <h1>VisionCalc Pro v1.2</h1>
+    <h1>VisionCalc Pro v1.4</h1>
     <p>사내 전용 — 접근 비밀번호를 입력하세요</p>
     <input id="gatePw" type="password" placeholder="비밀번호" autocomplete="current-password" />
     <button id="gateBtn">Login</button>
     <div class="err" id="gateErr"></div>
+    <div class="upd">Updated 2026.10.26</div>
   </div>
 </div>
 <script>
@@ -200,6 +211,7 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
   <button data-view="lenses" onclick="showView('lenses')">렌즈 DB</button>
   <button data-view="projects" onclick="showView('projects')">프로젝트</button>
   <span style="flex:1"></span>
+  <button class="verbtn" onclick="openHistory()" title="버전별 업데이트 내역">v1.4 · 업데이트 내역</button>
 </nav>
 
 <main>
@@ -217,10 +229,10 @@ window.__GATE_HASH = "51816188a3b464fa4d6f56fb2b3dd180e99cfc7ddde6c45f891397faa8
     <div id="viewport">
       <div class="vp-controls">
         <button class="btn" onclick="toggleObjPanel()" title="검사 대상체 패널 열기/닫기">◧ 대상체</button>
-        <button class="btn" onclick="setCamView('persp')">3D</button>
-        <button class="btn" onclick="setCamView('front')">Front</button>
-        <button class="btn" onclick="setCamView('top')">Top</button>
-        <button class="btn" onclick="setCamView('reset')">Reset</button>
+        <button class="btn" onclick="setCamView('persp')" title="등각 시점 (현재 줌 유지)">3D</button>
+        <button class="btn" onclick="setCamView('front')" title="정면 시점 (현재 줌 유지)">Front</button>
+        <button class="btn" onclick="setCamView('top')" title="상면 시점 (현재 줌 유지)">Top</button>
+        <button class="btn" onclick="setCamView('reset')" title="초기 시점·줌으로 복귀">Reset</button>
       </div>
       <div class="vp-hint">마우스 좌클릭: 회전 · 휠: 줌 · 우클릭: 이동</div>
     </div>
@@ -627,6 +639,8 @@ window.recalc=recalc;
 
 /* ============ THREE.js viewer ============ */
 let renderer,scene,camera3,controls,group,labelLayer;
+// 초기 시점 (Reset 시 복귀)
+const HOME_VIEW={pos:new THREE.Vector3(200,160,280), target:new THREE.Vector3(0,60,0)};
 function init3D(){
   const vp=document.getElementById('viewport');
   const W=vp.clientWidth, H=vp.clientHeight;
@@ -635,8 +649,9 @@ function init3D(){
   vp.appendChild(renderer.domElement);
   scene=new THREE.Scene(); scene.background=new THREE.Color(0xdfe5ec);
   camera3=new THREE.PerspectiveCamera(45,W/H,0.1,5000);
-  camera3.position.set(180,140,260);
+  camera3.position.copy(HOME_VIEW.pos);
   controls=new OrbitControls(camera3,renderer.domElement);
+  controls.target.copy(HOME_VIEW.target);
   controls.enableDamping=true;
   scene.add(new THREE.HemisphereLight(0xffffff,0x1a2535,1.0));
   const dl=new THREE.DirectionalLight(0xffffff,1.4); dl.position.set(120,200,160); scene.add(dl);
@@ -769,6 +784,11 @@ function update3D(r){
   // 상태 LED
   mk(new THREE.SphereGeometry(1.8,10,10), mLED, 14.6,cb+34,5);
 
+  // 카메라·렌즈 재질 수집 (상면 시점에서 반투명 처리용)
+  hwMats=[...new Set(group.children.map(o=>o.material))];
+  hwMats.forEach(m=>{ m.userData.t0=m.transparent; m.userData.o0=m.opacity; });
+  applyXray(xrayOn);
+
   /* ── 광축 빔 ──────────────────────────────────────────────── */
   mk(new THREE.CylinderGeometry(.45,.45,L,8),
     new THREE.MeshBasicMaterial({color:0x3b82f6,transparent:true,opacity:.38}), 0,L/2,0);
@@ -857,9 +877,24 @@ function update3D(r){
   labels.push(Object.assign(makeLabel(`FOV ${fmt(r.fovW)} × ${fmt(r.fovH)} mm`),{pos:new THREE.Vector3(0,2,fh/2+8)}));
   if(!isNaN(r.pixRes)) labels.push(Object.assign(makeLabel(`${fmt(r.pixRes)} μm/px`),{pos:new THREE.Vector3(-fw/2-4,1,0)}));
 }
+/* 상면 시점: 카메라·렌즈가 FOV를 가리지 않도록 반투명 */
+let hwMats=[], xrayOn=false;
+function applyXray(on){
+  hwMats.forEach(m=>{
+    m.transparent=on||m.userData.t0;
+    m.opacity=on? Math.min(m.userData.o0,.15) : m.userData.o0;
+    m.depthWrite=!on;
+    m.needsUpdate=true;
+  });
+}
 function animate(){
   requestAnimationFrame(animate);
   controls&&controls.update();
+  if(camera3&&controls){
+    // 시선이 수직에서 약 25° 이내면 상면 시점으로 간주
+    const top=camera3.position.clone().sub(controls.target).normalize().y>0.9;
+    if(top!==xrayOn){ xrayOn=top; applyXray(top); }
+  }
   renderer&&renderer.render(scene,camera3);
   // project labels
   const vp=document.getElementById('viewport'); if(!vp.clientWidth)return;
@@ -870,13 +905,18 @@ function animate(){
     l.el.style.display=(p.z>1)?'none':'block';
   });
 }
+// 3D/Front/Top: 현재 줌·이동은 유지하고 시점 방향만 변경 · Reset: 초기 시점으로 복귀
+const VIEW_DIR={persp:[1,1,1], front:[0,.25,1], top:[0,1,.0003]};
 window.setCamView=(mode)=>{
   if(!camera3)return;
-  const d=320;
-  if(mode==='front') camera3.position.set(0,140,d);
-  else if(mode==='top') camera3.position.set(0,d,0.1);
-  else camera3.position.set(200,160,280);
-  controls.target.set(0,60,0); controls.update();
+  if(mode==='reset'){
+    camera3.position.copy(HOME_VIEW.pos); controls.target.copy(HOME_VIEW.target);
+  } else {
+    const dist=camera3.position.distanceTo(controls.target);
+    camera3.position.copy(controls.target)
+      .add(new THREE.Vector3(...VIEW_DIR[mode]).normalize().multiplyScalar(dist));
+  }
+  controls.update();
 };
 
 /* ============ views ============ */
@@ -1038,6 +1078,40 @@ window.exportCSV=()=>{
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download=name.replace(/\s+/g,'_')+'.csv'; a.click();
   toast('CSV 내보냄');
+};
+
+/* ============ 버전 히스토리 ============ */
+// 새 버전 배포 시 맨 위에 항목 추가 (로그인 화면 버전·날짜도 함께 갱신)
+const VERSION_HISTORY=[
+  {ver:'v1.4', date:'2026.10.26', items:[
+    '검사 대상체 패널 추가 — 가로·세로·높이·위치·회전 입력, 3D 표시 및 FOV 포함 여부 검토',
+    '일반 렌즈는 물체 윗면 높이의 축소 FOV 기준 판정, 텔레센트릭은 피사계심도 초과 경고',
+    '프로젝트 저장/불러오기·CSV 내보내기에 대상체 반영',
+    '3D 뷰 버튼 정리 — 3D/Front/Top은 현재 줌 유지, Reset은 초기 시점 복귀',
+    'Top 시점에서 카메라·렌즈 반투명 처리',
+    '대상체 패널 표시 시 우측 메뉴 잘림 수정',
+    '로그인 화면 업데이트 날짜 표시, 버전별 업데이트 내역 추가']},
+  {ver:'v1.2', date:'2026.06.25', items:[
+    '로그인 화면 버전 표시',
+    '호환성 WD 검사 오탐 수정',
+    ['카메라·렌즈 DB 라인업 갱신','06.26'],
+    ['DB 선택 팝업 너비 및 선택 버튼 줄바꿈 수정','06.26'],
+    ['프로젝트 저장 실패 수정','07.20']]},
+  {ver:'초기 버전', date:'2026.06.15 ~ 06.25', items:[
+    '비전 하드웨어 사양 검토 플랫폼 최초 배포 — FOV·WD·분해능 계산, 3D 뷰어',
+    '초점거리 고정 모드 (목표 WD → 배율 산출)',
+    'DB 모델명 표시 및 수동 수정 시 커스텀 모델 표시',
+    '텔레센트릭 렌즈 계산 및 DB 선택, NA 데이터 추가',
+    'DB 읽기 전용 전환 — 서버 db.json 직접 로드',
+    '3D 뷰어 카메라·렌즈 외형 개선, 텔레센트릭 렌즈 형상 전환']}
+];
+window.openHistory=()=>{
+  const html=VERSION_HISTORY.map((h,i)=>`<div class="hist">
+    <h4>${esc(h.ver)} <span class="d">${esc(h.date)}</span>${i===0?'<span class="cur">현재</span>':''}</h4>
+    <ul>${h.items.map(it=>Array.isArray(it)
+      ? `<li>${esc(it[0])}<span class="d">(${esc(it[1])})</span></li>`
+      : `<li>${esc(it)}</li>`).join('')}</ul></div>`).join('');
+  openModal('업데이트 내역', html+`<div class="modal-actions"><button class="btn" onclick="closeModal()">닫기</button></div>`);
 };
 
 /* ============ modal/util ============ */
