@@ -1,5 +1,5 @@
 {
-  "updated": "2026-06-26",
+  "updated": "2026-11-10",
   "_schema_note": {
     "cameras": "id / manufacturer / model_name / width_px / height_px / pixel_size_um / sensor_type / color_mono / interface / frame_rate_fps / mount / sensor_format",
     "lenses": "id / manufacturer / model_name / focal_length_mm / magnification(at min WD) / mount_type / min_wd_mm / max_wd_mm / sensor_format"
@@ -919,6 +919,51 @@
       "color_mono": "Color",
       "interface": "GigE",
       "frame_rate_fps": 11,
+      "mount": "C-mount",
+      "sensor_format": "1.1\""
+    },
+    {
+      "_section": "── Cognex CIC GigE (C-mount) ──"
+    },
+    {
+      "id": "cam-cognex-1",
+      "manufacturer": "Cognex",
+      "model_name": "CIC-A05-CG-24-G",
+      "width_px": 2448,
+      "height_px": 2048,
+      "pixel_size_um": 3.45,
+      "sensor_type": "CMOS / Sony IMX264 / GS",
+      "color_mono": "Color",
+      "interface": "GigE",
+      "frame_rate_fps": 24,
+      "mount": "C-mount",
+      "sensor_format": "2/3\""
+    },
+    {
+      "id": "cam-cognex-2",
+      "manufacturer": "Cognex",
+      "model_name": "CIC-A12-MG-9-G",
+      "width_px": 4096,
+      "height_px": 3000,
+      "pixel_size_um": 3.45,
+      "sensor_type": "CMOS / Sony IMX304 / GS",
+      "color_mono": "Mono",
+      "interface": "GigE",
+      "frame_rate_fps": 9,
+      "mount": "C-mount",
+      "sensor_format": "1.1\""
+    },
+    {
+      "id": "cam-cognex-3",
+      "manufacturer": "Cognex",
+      "model_name": "CIC-A12-CG-9-G",
+      "width_px": 4096,
+      "height_px": 3000,
+      "pixel_size_um": 3.45,
+      "sensor_type": "CMOS / Sony IMX304 / GS",
+      "color_mono": "Color",
+      "interface": "GigE",
+      "frame_rate_fps": 9,
       "mount": "C-mount",
       "sensor_format": "1.1\""
     }
